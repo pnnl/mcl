@@ -200,6 +200,8 @@ make check
 killall mcl_sched
 ```
 
+The test directory also contains OpenCL version of the tests for reference and performance comparison. These versions are built by `make check` but not executed during testing.
+
 ## STATUS
 MCL is a research prototype and still under development, thus not all intended features are yet implemented.
 
