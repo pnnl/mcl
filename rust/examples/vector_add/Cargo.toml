@@ -1,0 +1,13 @@
+[package]
+name = "vector_add"
+version = "0.1.0"
+edition = "2021"
+authors = ["Ryan D. Friese <ryan.friese@pnnl.gov>", "Polykarpos Thomadakis <polykarpos.thomadakis@pnnl.gov>",  "Roberto Gioiosa <roberto.gioiosa@pnnl.gov>"]
+description = "Example of how to perform a vector addition"
+repository = "https://github.com/pnnl/mcl"
+license-file = "LICENSE"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+mcl-rs = "0.1.2"
