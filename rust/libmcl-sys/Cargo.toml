@@ -1,0 +1,18 @@
+[package]
+name = "libmcl-sys"
+version = "0.1.0"
+authors = ["Polykarpos Thomadakis <polykarpos.thomadakis@pnnl.gov>", "Ryan D. Friese <ryan.friese@pnnl.gov>"]
+edition = "2021"
+description = "This system crate provides Rulst language bindings to the Minos Compute Library (MCL)"
+repository = "https://github.com/pnnl/mcl"
+license-file = "LICENSE"
+keywords = ["heterogeneous","gpu","fpga","hpc","runtime"]
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dev-dependencies]
+rand = "0.8.3"
+
+
+[build-dependencies]
+bindgen = "0.59.2"
