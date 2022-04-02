@@ -1,6 +1,6 @@
 [package]
 name = "mcl-rs"
-version = "0.1.0"
+version = "0.1.1"
 authors = ["Polykarpos Thomadakis <polykarpos.thomadakis@pnnl.gov>", "Ryan D. Friese <ryan.friese@pnnl.gov>"]
 edition = "2021"
 description = "This system crate provides high-level rust language bindings to the Minos Compute Library (MCL)"
