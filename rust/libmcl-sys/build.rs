@@ -3,6 +3,25 @@ extern crate bindgen;
 use std::env;
 use std::path::PathBuf;
 
+#[cfg(feature = "docs-rs")]
+fn main() {
+    let out_path = PathBuf::from(env::var("OUT_DIR").unwrap());
+    let mut bindings = bindgen::Builder::default()
+        // The input header we would like to generate
+        // bindings for.
+        .header("doc_minos.h")
+        .allowlist_var("MCL_.*")
+        .allowlist_type("MCL_.*")
+        .allowlist_type("mcl_.*")
+        .allowlist_function("mcl_.*")
+        .generate()
+        .expect("Unable to generate bindings");
+    bindings
+        .write_to_file(out_path.join("bindings.rs"))
+        .expect("Couldn't write bindings!");
+} // Skip the script when the doc is building
+
+#[cfg(not(feature = "docs-rs"))]
 fn main() {
 
     let mut ocl_libpath : String;
