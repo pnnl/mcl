@@ -1,6 +1,6 @@
 [package]
 name = "mcl-rs"
-version = "0.1.1"
+version = "0.1.2"
 authors = ["Polykarpos Thomadakis <polykarpos.thomadakis@pnnl.gov>", "Ryan D. Friese <ryan.friese@pnnl.gov>"]
 edition = "2021"
 description = "This system crate provides high-level rust language bindings to the Minos Compute Library (MCL)"
@@ -20,3 +20,7 @@ async-std = {version = "0.99.3", features = ["unstable"]}
 
 [features]
 versal=[]
+docs-rs = ["libmcl-sys/docs-rs"]
+
+[package.metadata.docs.rs]
+features = [ "docs-rs" ] # This feature will be enabled during the docs.rs bui
