@@ -202,6 +202,10 @@ killall mcl_sched
 
 The test directory also contains OpenCL version of the tests for reference and performance comparison. These versions are built by `make check` but not executed during testing.
 
+## RUST BINDINGS
+We offer two Rust crates providing bindings for MCL, the source for both crates is hosted in the [rust](https://github.com/pnnl/mcl/tree/master/rust) folder of this repository. Both crates are also available on crates.io
+* [libmcl-sys](https://github.com/pnnl/mcl/tree/master/rust/libmcl-sys) -- (https://crates.io/crates/libmcl-sys): high-level bindings through an "unsafe" interface
+* [mcl-rs](https://github.com/pnnl/mcl/tree/master/rust/mcl-rs) -- (https://crates.io/crates/mcl-rs):high-level bindings providing a "safe" interface
 ## STATUS
 MCL is a research prototype and still under development, thus not all intended features are yet implemented.
 
@@ -215,7 +219,7 @@ Ryan Friese
 Lunzheng (Lenny) Guo  
 Alok Kamatar  
 Burcu Mutlu  
-Polykarpos Thomakidis
+Polykarpos Thomadakis
 
 ### Previous Contributors
 Giulio Picierro
