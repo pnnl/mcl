@@ -18,6 +18,7 @@ MCL leverages the OpenCL library and API to interface with computing devices and
 
 ## NEWS
 ----
+* June 2022: ICS'22 Tutorial 
 * February 2022: PPoPP'22 Tutorial (TBA)
 * February 2021: [PPoPP'21 Tutorial](https://minos-computing.github.io/tutorials/ppopp21/ppopp21.html)
 
@@ -32,6 +33,7 @@ Building MCL requires the following libraries and headers to be installed:
 - OpenCL libraries
 - OpenCL-compatible devices
 - UTHash and UTList headers (https://github.com/troydhanson/uthash)
+- 
 
 Headears and libraries should be installed in path that can either be reachable or specified during the configuration step.
 
@@ -42,6 +44,24 @@ OpenCL libaries for each device should be installed in the system. Genearlly:
 - For CPU OpenCL implementations, Intel, AMD, ARM, and Apple provide OpenCL libraries.
 - POCL2 is an open-source OpenCL library for CPU (Intel, AMD, ARM, etc.) and NVIVIDA GPUS (http://portablecl.org)
 
+
+### Pre-Configuration:
+
+First, import the submodules:
+
+```
+git submodule init
+git submodule update
+```
+
+Next, compile NBHashMap
+
+```
+cd src/common/nbhashmap
+make CPPFLAGS=<your flags> CFLAGS=<your flags>
+```
+
+This produces an object file `nbhashmap.o` that will be linked to the MCL library. Go back to the main source directory.
 
 ### Configuration:
 
@@ -54,7 +74,7 @@ autoreconf --install
 Run the configure script to configure MCL. 
 
 ```
-`configure' configures Minos Computing Library 0.4 to adapt to many kinds of systems.
+`configure' configures Minos Computing Library 0.5 to adapt to many kinds of systems.
 
 Usage: ./configure [OPTION]... [VAR=VALUE]...
 
@@ -180,6 +200,15 @@ Other noteworthy options are:
 - Collecting and displaying statistics can be enabled by specifying `--enable-stats`
 - Tracing can be enabled by specifying `--enable-trace` (experimental)
 
+Notes on OpenCL2:
+- Not all vendor OpenCL implementations support OpenCL 2.x specifications. However, some functionalities in MCL do require an OpenCL 2.x-compatible library. The option `--enable-opencl2 ` can be used to enable/disable OpenCL 2.x functionalities.
+
+Notes on OSX:
+- On OSX MCL can either use Apple OpenCL libraries (Default) or other OpenCL libraries. We have successfully tested POCL (http://portablecl.org). The option `--enable-applecl` can be used to enable/disable Apple OpenCL library. The default value is `enabled` on OSX and `disabled` on other systems.
+- OpenCL2 functionalities are disable when Apple OpenCL library is used.
+
+
+
 ### Compiling and installing:
 
 Run:
@@ -189,7 +218,7 @@ make
 make install
 ```
 
-This will install the scheduler `mcl_sched` in `<prefix_dir>/bin`, the mcl libraries in `<prefix_dir>/lib`, and MCL headers in `<prefix_dir>/include`. Options can be specifying when configuring to select different paths.
+This will install the scheduler `mcl_sched` in `<prefix_dir>/bin`, the MCL libraries in `<prefix_dir>/lib`, and MCL headers in `<prefix_dir>/include`. Options can be specifying when configuring to select different paths.
 
 ### Testing
 MCL comes with a unit test suite that can be executed with (MCL scheduler needs to be running when executing the tests):
@@ -206,6 +235,7 @@ The test directory also contains OpenCL version of the tests for reference and p
 We offer two Rust crates providing bindings for MCL, the source for both crates is hosted in the [rust](https://github.com/pnnl/mcl/tree/master/rust) folder of this repository. Both crates are also available on crates.io
 * [libmcl-sys](https://github.com/pnnl/mcl/tree/master/rust/libmcl-sys) -- (https://crates.io/crates/libmcl-sys): high-level bindings through an "unsafe" interface
 * [mcl-rs](https://github.com/pnnl/mcl/tree/master/rust/mcl-rs) -- (https://crates.io/crates/mcl-rs):high-level bindings providing a "safe" interface
+
 ## STATUS
 MCL is a research prototype and still under development, thus not all intended features are yet implemented.
 

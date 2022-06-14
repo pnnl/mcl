@@ -1,4 +1,4 @@
-AC_INIT([Minos Computing Library],[0.5],[roberto.gioiosa@pnnl.gov ],[mcl])
+AC_INIT([Minos Computing Library],[0.6],[roberto.gioiosa@pnnl.gov ],[mcl])
 AM_INIT_AUTOMAKE([-Wall -Werror foreign subdir-objects tar-pax])
 
 AC_CONFIG_MACRO_DIRS([m4])
@@ -143,8 +143,8 @@ echo "====================================================="
 echo "|                                                   |"
 echo "|     Minos Computing Library                       |"
 echo "|                                                   |"
-echo "| Oak Ridge National Laboratory                     |"
-echo "| Contact: R. Gioiosa - gioiosar@ornl.gov           |"
+echo "| Pacific Northwest National Laboratory             |"
+echo "| Contact: R. Gioiosa - roberto.gioiosa@pnnl.gov    |"
 echo "|                                                   |"
 echo "====================================================="
 echo ""
