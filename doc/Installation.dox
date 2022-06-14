@@ -1,0 +1,77 @@
+/**
+@page Installation Installation
+
+[TOC]
+
+This document provides a detailed guide to configuring and installing MCL.
+
+@section Basic Installation
+
+The code for MCL can be found at https://github.com/pnnl/mcl. You may either download the latest release as a tar.gz file, or you may clone the repository for the latest changes. Make sure to also run ```git submodule update --init --recursive```. 
+
+MCL requires the following libraries and headers to be installed and reachable during the installation step:
+- A C compiler toolchain
+- OpenCL headers (https://github.com/KhronosGroup/OpenCL-Headers)
+- OpenCL libraries
+- OpenCL-compatible devices
+- UTHash and UTList headers (https://github.com/troydhanson/uthash)
+- libAtomicOps (https://github.com/ivmai/libatomic_ops)
+
+OpenCL libaries for each device should be installed in the system. Genearlly:
+
+- Most NVIDIA CUDA installation come with OpenCL libraries.
+- Most AMD installations come with OpenCL libraries
+- For CPU OpenCL implementations, Intel, AMD, ARM, and Apple provide OpenCL libraries.
+- POCL2 is an open-source OpenCL library for CPU (Intel, AMD, ARM, etc.) and NVIVIDA GPUS (http://portablecl.org)
+
+Optionally, some MCL feautres and other devices are supported by an OpenCL extension provided as a patch to the POCL library. See [POCL](#POCL) for a complete guide to setting up an MCL specific OpenCL library.
+
+If you cloned the GIT repository, create the configure script, otherwise skip to the next steps:
+
+```
+autoreconf --install
+```
+
+Run the configure script. `configure' configures Minos Computing Library 0.5 to adapt to many kinds of systems. For a more detailed description of configuration options, see [Configuration](#Configuration):
+```
+./configure [OPTION]... [VAR=VALUE]...
+```
+
+Nbhashmap is an external dependency that is included as a submodule of MCL. It must be build before MCL can be built. To to build Nbhashmap, run:
+```
+cd src/lib/nbhashmap
+CFLAGS="-I<path to libatomic_ops header>" LDFLAGS="..." make
+cd ../../..
+```
+
+Then we can build and install MCL:
+```
+make install
+```
+
+@section Configuration System Specfic Configuration Options
+
+@section Features Configurable Features
+@subsection Debugging
+@subsection Tracing
+@subsection Stats
+@subsection SharedMem Shared Memory
+
+@section Environment Environment Variables
+
+@section POCL Using POCL with MCL Extensions
+As mentioned above, POCL is an open source implementation of OpenCL for CPUs and some GPUs. Any POCL version which supports OpenCL 1/2 should be inter-operable with MCL. However, we also use the open source nature of the POCL library to support extensions to the OpenCL interface which can be used by MCL. These extensions provide an interface to share on-device memory using an OpenCL interface. Currently there is only a CPU and CUDA GPU implementation of the OpenCL extension. To get these extensions we provide a patch file for a specific POCL release. From the location of the mcl directory (so POCL will be installed as a sibling directory), run:
+```
+./mcl/scripts/get-pocl-shared-mem.sh
+```
+
+This will get the source code for the POCL extensions. Then configure and build POCL using CMake in accordance with the POCL documentation. Typically POCL can use an OpenCL ICD loader and be used in parallel with other OpenCL implementations (i.e. AMD OpenCL). However, because we change the OpenCL API, you will not be able to use an OpenCL ICD Loader with the shared memory extensions, and you will have to install the OpenCL header files. This also means that, when installing with the shared memory extesnions, POCL cannot live side-by-side with other OpenCL implementations. In this case, the POCL library will be the only OpenCL implementation. A typical POCL cmake configuration that fufills these requirements is:
+```
+cmake -GNinja -DWITH_LLVM_CONFIG=<path-to-llvm-config> -DENABLE_ICD=OFF -DENABLE_CUDA=ON -DSTATIC_LLVM=ON -DCMAKE_BUILD_TYPE=RelWithDebInfo ..
+```
+
+To use the extensions within MCL we must tell the library in the configure script:
+```
+./configure --enable-shared-memory --enable-pocl-extensions
+```
+**/

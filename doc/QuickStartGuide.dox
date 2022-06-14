@@ -1,0 +1,23 @@
+/**
+@page GettingStarted Getting Started
+
+[TOC]
+
+This page serves as a quick introduction to setting up and running your first MCL program. It provides a minimal amount of details necessary to get started coding as quickly as possible
+
+@section Installation How to Install MCL?
+
+@section HelloWorld MCL Hello World
+
+@subsection Code The Code
+
+@subsection Building Building Your First program
+
+@subsection Scheduler Running the MCL Scheduler
+
+@subsection Running Running MCL Hello World
+
+@section FurtherReading Further Reading
+
+
+**/
