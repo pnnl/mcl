@@ -1,4 +1,5 @@
 [submodule "src/common/nbhashmap"]
 	path = src/common/nbhashmap
 	url = https://github.com/AK2000/nbhashmap.git
-	branch = master
+	branch=master
+	
