@@ -23,23 +23,30 @@ static inline int msg_assemble(struct mcl_msg_struct* msg, uint64_t* data)
 	data[0] = data[0] | ((msg->rid   << MSG_RID_SHIFT)   & MSG_RID_MASK);
 	data[1] =            (msg->pes   << MSG_PES_SHIFT)   & MSG_PES_MASK;
 	data[1] = data[1] | ((msg->mem   << MSG_MEM_SHIFT)   & MSG_MEM_MASK);
-	data[1] = data[1] | ((msg->nres  << MSG_NRES_SHIFT)   & MSG_NRES_MASK);
+    data[1] = data[1] | ((msg->nres  << MSG_NRES_SHIFT)   & MSG_NRES_MASK);
+	data[2] =           ((msg->taskid  << MSG_TASKID_SHIFT)   & MSG_TASKID_MASK);
 
-	for(int i=0; i<MCL_DEV_DIMS; i++){
-		data[2+i] = msg->pesdata.pes[i];
-		data[2+MCL_DEV_DIMS+i] = msg->pesdata.lpes[i];
+	Dprintf("Number of dependencies inside message send: %"PRIu32"", msg->ndependencies);
+	((uint32_t*)data)[6] = msg->ndependencies;
+	if(msg->dependencies){
+		memcpy(&((uint32_t*)data)[7], msg->dependencies, sizeof(uint32_t) * MCL_MAX_DEPENDENCIES);
 	}
 
-	for(int i = 0; i < msg->nres; i++){
-		data[2+2*MCL_DEV_DIMS+i] = ((msg->resdata[i].mem_id   << MSG_MEMID_SHIFT)   & MSG_MEMID_MASK);
-		data[2+2*MCL_DEV_DIMS+i] = data[2+2*MCL_DEV_DIMS+i] | ((msg->resdata[i].mem_size << MSG_MEMSIZE_SHIFT) & MSG_MEMSIZE_MASK);
-		data[2+2*MCL_DEV_DIMS+i] = data[2+2*MCL_DEV_DIMS+i] | ((msg->resdata[i].flags    << MSG_MEMFLAG_SHIFT) & MSG_MEMFLAG_MASK);
+    data += 3 + ((MCL_MAX_DEPENDENCIES + 1)/2);
+    for(int i=0; i<MCL_DEV_DIMS; i++){
+		data[i] = msg->pesdata.pes[i];
+		data[MCL_DEV_DIMS+i] = msg->pesdata.lpes[i];
 	}
-
-	Dprintf("CMD: 0x%"PRIx64" TYPE: 0x%"PRIx64" RID: 0x%"PRIx64" PES: 0x%"PRIx64" MEM: 0x%"PRIx64 
-		" FLAGS: 0x%"PRIx64" => MSG: 0x%016"PRIx64" %016"PRIx64"",
-	        msg->cmd, msg->type, msg->rid, msg->pes, msg->mem,  msg->flags, data[0], data[1]);
-
+	
+    data += (2*MCL_DEV_DIMS);
+    for(int i = 0, j = 0; i < msg->nres; i += 1, j += 2){
+        data[j] =           ((msg->resdata[i].mem_id   << MSG_MEMID_SHIFT)   & MSG_MEMID_MASK);
+		data[j] = data[j] | ((msg->resdata[i].pid      << MSG_PID_SHIFT)     & MSG_PID_MASK);
+		data[j] = data[j] | ((msg->resdata[i].flags    << MSG_MEMFLAG_SHIFT) & MSG_MEMFLAG_MASK);
+		data[j+1] =             ((msg->resdata[i].overall_size << MSG_OVERALL_SHIFT) & MSG_OVERALL_MASK);
+        data[j+1] = data[j+1] | ((msg->resdata[i].mem_size << MSG_MEMSIZE_SHIFT) & MSG_MEMSIZE_MASK);
+		data[j+1] = data[j+1] | ((msg->resdata[i].mem_offset << MSG_OFFSET_SHIFT) & MSG_OFFSET_MASK);
+    }
 	return 0;
 }
 
@@ -61,29 +68,34 @@ static inline int msg_disassemble(uint64_t* data, struct mcl_msg_struct* msg, co
 	msg->rid   = (data[0] & MSG_RID_MASK)   >> MSG_RID_SHIFT;
 	msg->pes   = (data[1] & MSG_PES_MASK)   >> MSG_PES_SHIFT;
 	msg->mem   = (data[1] & MSG_MEM_MASK)   >> MSG_MEM_SHIFT;
-	msg->nres  = (data[1] & MSG_NRES_MASK) >> MSG_NRES_SHIFT;
+	msg->nres  =  (data[1] & MSG_NRES_MASK) >> MSG_NRES_SHIFT;
+	msg->taskid  =  (data[2] & MSG_TASKID_MASK) >> MSG_TASKID_SHIFT;
 
-        for(int i=0; i<MCL_DEV_DIMS; i++){
-                msg->pesdata.pes[i] = data[2+i];
-                msg->pesdata.lpes[i] = data[2+MCL_DEV_DIMS+i];
+	msg->ndependencies = ((uint32_t*)data)[6];
+	memcpy(msg->dependencies, &((uint32_t*)data)[7], sizeof(uint32_t) * msg->ndependencies);
+	Dprintf("Number of dependencies inside message recieve: %"PRIu32"", msg->ndependencies);
+
+    for(int i=0; i<MCL_DEV_DIMS; i++){
+        msg->pesdata.pes[i] = data[2+i];
+        msg->pesdata.lpes[i] = data[2+MCL_DEV_DIMS+i];
+    }
+
+    if(msg->nres) {
+		Dprintf("Number of resident memory inside message receive: %"PRIu64"", msg->nres);
+        msg->resdata = (msg_arg_t*)malloc(msg->nres * sizeof(msg_arg_t));
+        if(!msg->resdata){
+            eprintf("Unable to allocate memory");
+            return -1;
         }
-        if(msg->nres) {
-                msg->resdata = (msg_arg_t*)malloc(msg->nres * sizeof(msg_arg_t));
-                if(!msg->resdata){
-                        eprintf("Unable to allocate memory");
-                        return -1;
-                }
-
-                for(int i = 0; i < msg->nres; i++){
-                        msg->resdata[i].mem_id   = (data[2+2*MCL_DEV_DIMS+i] & MSG_MEMID_MASK)   >> MSG_MEMID_SHIFT;
-                        msg->resdata[i].mem_size = (data[2+2*MCL_DEV_DIMS+i] & MSG_MEMSIZE_MASK) >> MSG_MEMSIZE_SHIFT;
-                        msg->resdata[i].flags    = (data[2+2*MCL_DEV_DIMS+i] & MSG_MEMFLAG_MASK) >> MSG_MEMFLAG_SHIFT;
-                }
+        for(int i = 0, j = 3 + ((MCL_MAX_DEPENDENCIES + 1)/2) + (2*MCL_DEV_DIMS); i < msg->nres; i += 1, j += 2){
+            msg->resdata[i].mem_id   = (data[j] & MSG_MEMID_MASK)     >> MSG_MEMID_SHIFT;
+			msg->resdata[i].pid      = (data[j] & MSG_PID_MASK)       >> MSG_PID_SHIFT;
+            msg->resdata[i].flags    = (data[j] & MSG_MEMFLAG_MASK)   >> MSG_MEMFLAG_SHIFT;
+			msg->resdata[i].overall_size = (data[j+1] & MSG_OVERALL_MASK) >> MSG_OVERALL_SHIFT;
+			msg->resdata[i].mem_size     = (data[j+1] & MSG_MEMSIZE_MASK) >> MSG_MEMSIZE_SHIFT;
+			msg->resdata[i].mem_offset   = (data[j+1] & MSG_OFFSET_MASK) >> MSG_OFFSET_SHIFT;
         }
-
-	Dprintf("MSG 0x%016"PRIx64" %016"PRIx64" => CMD: 0x%"PRIx64" TYPE: 0x%"PRIx64" RID: 0x%"PRIx64
-		" PES: 0x%"PRIx64" MEM: 0x%"PRIx64" FLAGS: 0x%" PRIx64, 
-		data[0], data[1], msg->cmd, msg->type, msg->rid, msg->pes, msg->mem, msg->flags);
+    }
 	
 	return 0;
 }
@@ -96,9 +108,13 @@ int msg_init(struct mcl_msg_struct* m)
 	m->mem   = 0x0;
 	m->rid   = 0x0;
 	m->flags = 0x0;
-        m->nres  = 0x0;
-        m->resdata = NULL;
-        memset(&(m->pesdata), 0x0, sizeof(msg_pes_t));
+    m->nres  = 0x0;
+	
+	m->taskid = 0x0;
+	memset(m->dependencies, 0, sizeof(uint32_t) * MCL_MAX_DEPENDENCIES);
+    memset(&(m->pesdata), 0x0, sizeof(msg_pes_t));
+    m->ndependencies = 0;
+    m->resdata = NULL;
 	return 0;
 }
 
@@ -111,11 +127,11 @@ int msg_init(struct mcl_msg_struct* m)
 */
 int msg_send(struct mcl_msg_struct* msg, int fd, struct sockaddr_un* dst)
 {
-        ssize_t data_size = MCL_MSG_SIZE + (sizeof(uint64_t) * msg->nres);
-        uint64_t*  data = (uint64_t*)malloc(data_size);
-        if(!data)
-                eprintf("Error allocating message memory.");
-        
+    ssize_t data_size = MCL_MSG_SIZE + (sizeof(uint64_t) * msg->nres * 2);
+	uint64_t*  data = (uint64_t*)malloc(data_size);
+    if(!data){
+        eprintf("Error allocating message memory.");
+    }
 	ssize_t len = data_size, ret;
 	
 	Dprintf("Sending msg cmd: 0x%" PRIx64 " to %s",msg->cmd,dst->sun_path);
@@ -151,7 +167,7 @@ int msg_send(struct mcl_msg_struct* msg, int fd, struct sockaddr_un* dst)
  */
 int msg_recv(struct mcl_msg_struct* msg, int fd, struct sockaddr_un* src)
 {
-	uint64_t data[8 + MCL_RES_ARGS_MAX];
+	uint64_t data[8 + ((MCL_MAX_DEPENDENCIES+1)/2) + (2 * MCL_RES_ARGS_MAX)];
 	uint64_t data_size = MCL_MAX_MSG_SIZE;
 	socklen_t len;
 	ssize_t   bytes;
@@ -180,6 +196,6 @@ int msg_recv(struct mcl_msg_struct* msg, int fd, struct sockaddr_un* src)
 }
 
 void msg_free(struct mcl_msg_struct* msg) {
-        free(msg->resdata);
-        msg->resdata = NULL;
+    free(msg->resdata);
+    msg->resdata = NULL;
 }

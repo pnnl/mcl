@@ -192,13 +192,15 @@ int mcl_add(unsigned int* a, unsigned int* b, size_t size, unsigned int* out)
 	struct timespec start, end;
 	uint64_t        pes[MCL_DEV_DIMS] = {size,1,1};
 
+        mcl_prg_load("./vadd.cl", "", MCL_PRG_SRC);
+
 	hdl = mcl_task_create();
 	if(!hdl){
 		printf("Error creating MCL task. Aborting.");
 		goto err;
 	}
 	
-	if(mcl_task_set_kernel(hdl, "vadd.cl", "VADD", 3, "", 0x0)){
+	if(mcl_task_set_kernel(hdl, "VADD", 3)){
 		printf("Error setting %s kernel. Aborting.", "VADD");
 		goto err_hdl;
 	}

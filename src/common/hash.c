@@ -70,16 +70,17 @@ mcl_request* req_search(mcl_request** table, uint32_t key)
 	return req;
 }
 
-#ifdef _DEBUG
+
 void req_print(mcl_request** table)
 {
+    return;
+
 	mcl_request* req = NULL;
 	mcl_request* tmp = NULL;
 
 	pthread_rwlock_rdlock(&req_lock);
 	HASH_ITER(hh, *table, req, tmp){
-		Dprintf("  Req %u", req->key);
+		iprintf("\tReq %u: %s", req->key, req->tsk->kernel->name);
 	}
 	pthread_rwlock_unlock(&req_lock);
 }
-#endif

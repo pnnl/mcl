@@ -22,6 +22,10 @@ static inline int rdata_print(void)
 #define rdata_print()
 #endif
 
+int process_cmp(process_t* p1, process_t* p2){ 
+	return p1->pid - p2->pid;
+}
+
 int sched_rdata_init(void)
 {
 	Dprintf("Initializing resident data hash table...");
@@ -164,7 +168,17 @@ int sched_rdata_rm_device(sched_rdata* el, int dev)
     el->devs &= ~(0x01 << dev);
     if(((cur_devs >> dev) & 0x01)){
         el->ndevs -= 1;
+		int64_t cur_idx = el->subbuffers.head;
+		mcl_partition_t* cur;
+		while(cur_idx >= 0){
+			cur = list_get(&el->subbuffers, cur_idx);
+			cur_idx = cur->next;
+			if(cur->dev == dev){
+				list_delete(&el->subbuffers, cur);
+			}
+		}
     }
+
     return ((cur_devs >> dev) & 0x01);
 }
 

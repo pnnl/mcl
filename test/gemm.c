@@ -69,6 +69,11 @@ int test_mcl(FTYPE* A, FTYPE* B, FTYPE* C, size_t N)
 		printf("Error allocating memmory for MCL hanlders. Aborting.\n");
 		goto err;
 	}
+#ifdef DOUBLE_PRECISION
+        mcl_prg_load("./gemmN.cl", "-DDOUBLE_PRECISION", MCL_PRG_SRC);
+#else
+        mcl_prg_load("./gemmN.cl", "-DSINGLE_PRECISION", MCL_PRG_SRC);
+#endif
 
 	clock_gettime(CLOCK_MONOTONIC,&start);
 	for(i=0; i<rep; i++){
@@ -78,11 +83,8 @@ int test_mcl(FTYPE* A, FTYPE* B, FTYPE* C, size_t N)
 			printf("Error creating MCL task. Aborting.\n");
 			continue;
 		}
-#ifdef DOUBLE_PRECISION
-		if(mcl_task_set_kernel(hdl[i], "./gemmN.cl", "gemmN", 4, "-DDOUBLE_PRECISION", 0x0)){
-#else
-		if(mcl_task_set_kernel(hdl[i], "./gemmN.cl", "gemmN", 4, "-DSINGLE_PRECISION", 0x0)){
-#endif
+
+		if(mcl_task_set_kernel(hdl[i], "gemmN", 4)){
 		printf("Error setting %s kernel. Aborting.\n", "gemmN");
 			continue;
 		}

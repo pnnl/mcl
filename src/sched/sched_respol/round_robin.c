@@ -28,7 +28,7 @@ static int rr_find_resource(sched_req_t *r)
 	int i, cnt = 0;
 	
 	VDprintf("Locating resource for (%d,%"PRIu64") PES: %"PRIu64" MEM: %"PRIu64" TYPE: 0x%"PRIx64"",
-		r->pid, r->rid, r->pes, r->mem, r->type);
+		r->key.pid, r->key.rid, r->pes, r->mem, r->type);
 	
 	/* Scan num_res devices starting from next_dev, wrap around if necessary. */
 	for (i = next_dev; cnt < nresources; cnt++, i = (i+1)%nresources) {
@@ -37,7 +37,7 @@ static int rr_find_resource(sched_req_t *r)
 
         uint64_t needed_mem = r->mem - rr_mem_on_dev(r, i);
         Dprintf("\tNeeded on resource %d: %"PRIu64" MEM", i, needed_mem);
-		if (res[i].mem_avail >= needed_mem && res[i].pes_used < res[i].dev->pes) {
+		if ((res[i].mem_avail >= needed_mem || res[i].dev->type & MCL_TASK_FPGA) && res[i].pes_used <= res[i].dev->pes) {
 			Dprintf("Found resource %d: %"PRIu64"/%"PRIu64" PEs used %"PRIu64
 				"/%"PRIu64" MEM available",
 				i, res[i].pes_used, res[i].dev->pes, res[i].mem_avail, 
@@ -53,7 +53,7 @@ static int rr_find_resource(sched_req_t *r)
 	}
     r->num_attempts += 1;
     Dprintf("No resource for task available: (%d,%"PRIu64") PES: %"PRIu64" MEM: %"PRIu64" TYPE: 0x%"PRIx64"",
-				r->pid, r->rid, r->pes, r->mem, r->type);
+				r->key.pid, r->key.rid, r->pes, r->mem, r->type);
 
 	return MCL_SCHED_BLOCK;
 }
@@ -63,5 +63,6 @@ const struct sched_resource_policy rr_policy = {
 	.find_resource = rr_find_resource,
 	.assign_resource = default_assign_resource,
 	.put_resource = default_put_resource,
+	.stats = default_stats
 };
 

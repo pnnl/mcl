@@ -53,12 +53,12 @@ int test_mcl(FPTYPE* A, FPTYPE* B, FPTYPE* C, size_t N, int test_type)
             break;
         case 3:
             arg_flags |= MCL_ARG_RESIDENT;
-            mcl_transfer* t = mcl_transfer_create(2, 1);
-            if(mcl_transfer_set_arg(t, 0, (void*) A, msize, arg_flags)){
+            mcl_transfer* t = mcl_transfer_create(2, 1, 0x0);
+            if(mcl_transfer_set_arg(t, 0, (void*) A, msize, 0, arg_flags)){
                 printf("Error setting transfer argument.\n");
                 return 1;
             }
-            if(mcl_transfer_set_arg(t, 1, (void*) B, msize, arg_flags)){
+            if(mcl_transfer_set_arg(t, 1, (void*) B, msize, 0, arg_flags)){
                 printf("Error setting transfer argument.\n");
                 return 1;
             }
@@ -83,11 +83,8 @@ int test_mcl(FPTYPE* A, FPTYPE* B, FPTYPE* C, size_t N, int test_type)
 			printf("Error creating MCL task. Aborting.\n");
 			continue;
 		}
-#ifdef DOUBLE_PRECISION
-		if(mcl_task_set_kernel(hdl[i], "./gemmN.cl", "gemmN", 4, "-DDOUBLE_PRECISION", 0x0)){
-#else
-		if(mcl_task_set_kernel(hdl[i], "./gemmN.cl", "gemmN", 4, "-DSINGLE_PRECISION", 0x0)){
-#endif
+                
+                if(mcl_task_set_kernel(hdl[i], "gemmN", 4)){
 			printf("Error setting %s kernel. Aborting.\n", "gemmN");
 			continue;
 		}
@@ -152,18 +149,18 @@ int test_mcl(FPTYPE* A, FPTYPE* B, FPTYPE* C, size_t N, int test_type)
     if(test_type == 3){
         printf("Setting argument for transfer out...\n");
         arg_flags |= MCL_ARG_RESIDENT | MCL_ARG_DONE;
-        mcl_transfer* t = mcl_transfer_create(2, 1);
+        mcl_transfer* t = mcl_transfer_create(2, 1, 0x0);
         if(!t){
             printf("Error creating transfer.\n");
             return 1;
         }
         printf("Successfully created transfer.\n");
-        if(mcl_transfer_set_arg(t, 0, (void*) A, msize, arg_flags)){
+        if(mcl_transfer_set_arg(t, 0, (void*) A, msize, 0, arg_flags)){
             printf("Error setting transfer argument.\n");
             return 1;
         }
         printf("Setup 1st argument\n");
-        if(mcl_transfer_set_arg(t, 1, (void*) B, msize, arg_flags)){
+        if(mcl_transfer_set_arg(t, 1, (void*) B, msize, 0, arg_flags)){
             printf("Error setting transfer argument.\n");
             return 1;
         }
@@ -255,6 +252,12 @@ int main(int argc, char** argv)
         memset(C, 0, size * size * sizeof(FPTYPE));
         memset(C_test, 0, size * size * sizeof(FPTYPE));
 
+#ifdef DOUBLE_PRECISION
+        mcl_prg_load("./gemmN.cl", "-DDOUBLE_PRECISION", MCL_PRG_SRC);
+#else
+        mcl_prg_load("./gemmN.cl", "-DSINGLE_PRECISION", MCL_PRG_SRC);
+#endif
+
         gemm_seq(A, B, C_test, size);
 
         // Test 0
@@ -340,7 +343,7 @@ int main(int argc, char** argv)
         ret = -1;
         goto out;
     }
-	ret = test_results(C, C_test, size);
+        ret = test_results(C, C_test, size);
     if(ret){
         printf("Error verifying computation. Aborting.\n");
         ret = -1;

@@ -28,7 +28,7 @@ static int has_mem_on_other_dev(uint64_t devs, int dev)
 static int delay_find_resource(sched_req_t *r)
 {	
 	VDprintf("Locating resource for (%d,%"PRIu64") PES: %"PRIu64" MEM: %"PRIu64" TYPE: 0x%"PRIx64"",
-		r->pid, r->rid, r->pes, r->mem, r->type);
+		r->key.pid, r->key.rid, r->pes, r->mem, r->type);
 
     int i = next_dev;
     int cnt = 0;
@@ -58,10 +58,25 @@ static int delay_find_resource(sched_req_t *r)
     }
 
     do {
+        uint64_t mult = 1;
+        switch (res[i].dev->type){
+            case MCL_TASK_GPU:
+                mult = MCL_DEV_MUL_GPU;
+                break;
+            case MCL_TASK_CPU:
+                mult = MCL_DEV_MUL_CPU;
+                break;
+            case MCL_TASK_FPGA:
+                mult = MCL_DEV_MUL_FPGA;
+                break;
+        }
+
         uint64_t needed_mem = r->mem - res_mem[i];
         Dprintf("\tNeeded on resource %d: %"PRIu64" MEM", i, needed_mem);
 
-        if((res[i].dev->type & r->type) && (res[i].mem_avail >= needed_mem) && (res[i].nkernels < res[i].dev->max_kernels)){
+        if((res[i].dev->type & r->type) 
+                && ((res[i].mem_avail >= needed_mem) || (res[i].dev->type & MCL_TASK_FPGA))
+                && res[i].pes_used <= res[i].dev->pes * mult){
             if(has_mem_on_other_dev(devs, i) && r->num_attempts < max_attempts){
                 num_fit += 1;
                 r->num_attempts += 1;
@@ -93,4 +108,5 @@ const struct sched_resource_policy delay_policy = {
 	.find_resource = delay_find_resource,
 	.assign_resource = default_assign_resource,
 	.put_resource = default_put_resource,
+    .stats = default_stats
 };

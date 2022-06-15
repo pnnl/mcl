@@ -7,7 +7,7 @@
 #include <minos.h>
 #include "utils.h"
 
-#define VERBOSE
+//#define VERBOSE
 
 static inline int test_results(float* z, size_t n)
 {
@@ -40,6 +40,7 @@ int test_ocl(float a, float* x, float* y, float* z, size_t size)
 	struct timespec  start, end;
 	char*            src_code = NULL;
 	size_t           src_size = 0;
+        size_t           num_kernels = 0;
 	cl_int           ret = 0;
 	cl_context       context;
 	cl_command_queue queue;
@@ -49,7 +50,9 @@ int test_ocl(float a, float* x, float* y, float* z, size_t size)
 	size_t           global_item_size = size;
 	size_t           local_item_size = 4;
 	int              i;
-	
+	size_t           klen;
+        char*            knames;
+
 	printf("OpenCL Test...");
 
 #ifdef VERBOSE
@@ -117,14 +120,41 @@ int test_ocl(float a, float* x, float* y, float* z, size_t size)
 		if(ret != CL_SUCCESS){
 			printf("Error creating program! Aborting. (%d)\n", ret);
 			goto err_z;
-		}
-		
+		}		
+
 		ret = clBuildProgram(program, 1, &(device[0]), NULL, NULL, NULL);
 		if(ret != CL_SUCCESS){
 			printf("Error building program! Aborting. (%d)\n", ret);
 			goto err_program;
 		}
 		
+                ret = clGetProgramInfo(program, CL_PROGRAM_NUM_KERNELS, sizeof(size_t), &num_kernels, NULL);
+                if(ret != CL_SUCCESS){
+                        printf("Error quering number of kernels in program (%d)\n", ret);
+                        goto err_program;
+                }
+                printf("Found %lu kernels in program\n", num_kernels);
+
+                ret = clGetProgramInfo(program, CL_PROGRAM_KERNEL_NAMES, 0, NULL, &klen);
+                if(ret != CL_SUCCESS){
+                        printf("Error quering size of program names (%d)\n", ret);
+                        goto err_program;
+                }
+
+                knames = (char*) malloc(klen);
+                if(!knames){
+                        printf("Error allocating memory\n");
+                        goto err_program;
+                }
+
+                ret = clGetProgramInfo(program, CL_PROGRAM_KERNEL_NAMES, klen, knames, NULL);
+                if(ret != CL_SUCCESS){
+                        printf("Error quering kernel names (%d)\n", ret);
+                        goto err_program;
+                }
+
+                printf("Kernels in program %s (size %lu)\n", knames, klen);
+
 		kernel = clCreateKernel(program, "SAXPY", &ret);
 		if(ret != CL_SUCCESS){
 			printf("Error creating kernel! Aborting. (%d)\n", ret);
@@ -217,13 +247,17 @@ int test_mcl(float a, float* x, float* y, float* z, size_t size)
 		printf("%f ", y[i]);
 	printf("]\n");
 #endif
-
 	hdl = (mcl_handle**) malloc(sizeof(mcl_handle*) * rep);
 	if(!hdl){
 		printf("Error allocating memmory for MCL hanlders. Aborting.\n");
 		goto err;
 	}
-	
+
+	if(mcl_prg_load("./saxpy.cl", "", MCL_PRG_SRC)){
+                printf("Error loading program. Aborting.\n");
+                goto err;
+        }
+
 	clock_gettime(CLOCK_MONOTONIC,&start);
 	for(i=0; i<rep; i++){
 		hdl[i] = mcl_task_create();
@@ -232,11 +266,11 @@ int test_mcl(float a, float* x, float* y, float* z, size_t size)
 			continue;
 		}
 		
-		if(mcl_task_set_kernel(hdl[i], "./saxpy.cl", "SAXPY", 4, "", 0x0)){
+		if(mcl_task_set_kernel(hdl[i], "SAXPY", 4)){
 			printf("Error setting %s kernel. Aborting.", "SAXPY");
 			continue;
 		}
-#if 1
+
 		if(mcl_task_set_arg(hdl[i], 0, (void*) x, size * sizeof(float),
 				    MCL_ARG_INPUT | MCL_ARG_BUFFER)){
 			printf("Error setting up task input. Aborting.");
@@ -260,20 +294,7 @@ int test_mcl(float a, float* x, float* y, float* z, size_t size)
 			printf("Error setting up task output. Aborting.");
 			continue;
 		}
-#endif		
-#if 0
-		if(mcl_task_set_arg(hdl[i], 0, (void*) &a, sizeof(unsigned int),
-				    MCL_ARG_INPUT | MCL_ARG_SCALAR)){
-			printf("Error setting up task input. Aborting.");
-			continue;
-		}
 
-		if(mcl_task_set_arg(hdl[i], 1, (void*) z, size * sizeof(unsigned int),
-				    MCL_ARG_OUTPUT | MCL_ARG_BUFFER)){
-			printf("Error setting up task output. Aborting.");
-			continue;
-		}
-#endif
 		if(mcl_exec(hdl[i], pes, NULL, flags)){
 			printf("Error submitting task! Aborting.");
 			continue;

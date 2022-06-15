@@ -53,7 +53,7 @@ static int fffs_enqueue(sched_req_t *r)
 		return -1;
 	}
 
-	Dprintf("Adding request (%d,%"PRIu64")", r->pid, r->rid);
+	Dprintf("Adding request (%d,%"PRIu64")", r->key.pid, r->key.rid);
 	pthread_mutex_lock(&fffs_plock);
 	LL_APPEND(plist, el);
     pthread_cond_signal(&fffs_cond);
@@ -71,7 +71,7 @@ static int fffs_dequeue(sched_req_t *r)
 		return -1;
 	}
 
-	Dprintf("Removing request (%d,%"PRIu64")", r->pid, r->rid);
+	Dprintf("Removing request (%d,%"PRIu64")", r->key.pid, r->key.rid);
 	pthread_mutex_lock(&fffs_plock);
 	if(plist)
 		LL_DELETE(plist, el);
@@ -114,7 +114,7 @@ static sched_req_t *fffs_next(void)
         }
 
         if(block) {
-            pthread_cond_wait(&fffs_cond, &fffs_plock);
+			pthread_cond_wait(&fffs_cond, &fffs_plock);
         }
     }
 	pthread_mutex_unlock(&fffs_plock);
@@ -157,8 +157,11 @@ static int fffs_finit(void)
 }
 
 extern const struct sched_resource_policy ff_policy;
+extern const struct sched_eviction_policy lru_eviction_policy;
+
 struct sched_class fffs_class = {
 	.respol = &ff_policy,
+    .evictionpol = &lru_eviction_policy,
 	.init = fffs_init,
 	.finit = fffs_finit,
 	.alloc_request = fffs_alloc_request,

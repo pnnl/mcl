@@ -71,6 +71,14 @@ if test "$build_mac" = "yes" ; then
                 [AS_HELP_STRING([--enable-appleocl],[Use Apple OpenCL (default enabled)])])
 fi
 
+AC_ARG_ENABLE([shared-memory],
+    [AC_HELP_STRING([--enable-ipshmem],
+		    [Enable inter-process shared memory (default: disabled)])])
+
+AC_ARG_ENABLE([pocl-extensions],
+    [AC_HELP_STRING([--enable-pocl-extensions],
+		    [Enable POCL extensions (default: disabled)])])
+
 AC_CHECK_HEADERS([stdio.h],[],[AC_MSG_ERROR[stdio.h not found!]])
 AC_CHECK_HEADERS([uthash.h],[],[AC_MSG_ERROR[uthash.h not found!]])
 AC_CHECK_HEADERS([utlist.h],[],[AC_MSG_ERROR[utlist.h not found!]])
@@ -114,15 +122,14 @@ if test "$enable_trace" = "yes" ; then
   AS_VAR_APPEND(CFLAGS, " -D_TRACE=1")
 fi
 
-#if test "$build_mac" = "no" ; then
-#  OPENCL_VERSION=`pkg-config --modversion OpenCL`
-#  OPENCL_VERSION_MAJOR=`echo $OPENCL_VERSION | sed 's/[[.]].*//'`
-#  OPENCL_VERSION_MINOR=`echo $OPENCL_VERSION | sed 's/[[^.]]*[[.]]//'`
-#  AS_VAR_APPEND(CFLAGS, " -DOPENCL_VERSION=$OPENCL_VERSION_MAJOR")
-#  AS_VAR_APPEND(CFLAGS, " -DOPENCL_VERSION_MINOR=$OPENCL_VERSION_MINOR")
-#  AS_VAR_APPEND(CFLAGS, " -DCL_USE_DEPRECATED_OPENCL_1_2_APIS")
-#fi
+if test "$enable_ipshmem" = "yes" ; then
+  AC_DEFINE([SHARED_MEM], [1], [Build shared memory.])
+fi
 
+if test "$enable_pocl_extensions" = "yes" ; then
+  AC_DEFINE([USE_POCL_SHARED_MEM], [1], [Use OpenCL extensions provided by pocl.])
+fi
+AM_CONDITIONAL([SHARED_MEM], [test "$enable_ipshmem" = "yes"])
 
 # Pass the conditionals to automake
 AM_CONDITIONAL([LINUX],   [test "$build_linux" = "yes"])
@@ -134,8 +141,20 @@ AM_CONDITIONAL([APPLEOCL],    [test "$enable_appleocl" = "yes"])
 
 AS_VAR_APPEND(CFLAGS, " -DCL_USE_DEPRECATED_OPENCL_1_2_APIS")
 
+AC_CHECK_PROGS([DOXYGEN], [doxygen])
+if test -z "$DOXYGEN"; then
+   AC_MSG_WARN([Doxygen not found - continue without Doxygen support])
+fi
+
+AM_CONDITIONAL([HAVE_DOXYGEN], [test -n "$DOXYGEN"])
+
 AC_CONFIG_HEADERS([config.h])
+AC_CONFIG_HEADERS([src/lib/include/mcl/_config.h:src/lib/include/mcl/mcl_config.h.in])
+AX_PREFIX_CONFIG_H([src/lib/include/mcl/mcl_config.h], [MCL], [src/lib/include/mcl/_config.h])
 AC_CONFIG_FILES([Makefile src/Makefile src/lib/Makefile src/sched/Makefile test/Makefile])
+
+AM_COND_IF([HAVE_DOXYGEN], [AC_CONFIG_FILES([doc/Doxyfile])])
+AM_COND_IF([HAVE_DOXYGEN], [AC_CONFIG_FILES([doc/Makefile])])
 
 AC_OUTPUT
 
@@ -159,6 +178,8 @@ echo "          OpenCL2:        $enable_opencl2"
 if test "$build_mac" = "yes" ; then
 echo "          Apple OCL:      $enable_appleocl"
 fi
+echo "          IPSHM:          $enable_ipshmem"
+echo "          OpenCL2:        $enable_pocl_extensions"
 echo ""
 echo "Compilers: "
 echo "		 C:		$CC"

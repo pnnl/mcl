@@ -12,7 +12,7 @@ extern mcl_desc_t mcl_desc;
 mcl_program *prgMap = NULL;
 pthread_rwlock_t prgMap_lock;
 
-int pcmp(mcl_program *a, mcl_program *b)
+static inline int pcmp(mcl_program* a, mcl_program* b)
 {
     return strcmp(a->path, b->path);
 }
@@ -35,139 +35,140 @@ static inline char *prg_makeKey(char *p, char *opt)
     return key;
 }
 
-static inline mcl_program *prgMap_search(char *key)
+static inline mcl_program* __prgMap_search(char* key)
 {
-    mcl_program *e;
+        mcl_program* e;
 
-    LL_FOREACH(prgMap, e)
-    if (strcmp(e->key, key) == 0)
-        return e;
+        LL_FOREACH(prgMap,e)
+		if(strcmp(e->key, key) == 0)
+			return e;
 
-    return NULL;
+        return NULL;
 }
 
-mcl_program *prgMap_add(char *path, char *opts)
+mcl_program* prgMap_search(char* key)
 {
-    mcl_program *p;
-    unsigned int ndevs = mcl_desc.info->ndevs;
-    int fd;
-    char *key = NULL;
+	mcl_program* e;
 
-    Dprintf("Looking for program %s with options %s...", path, opts);
-    if (opts)
-        key = prg_makeKey(path, opts);
-    else
-    {
-        key = (char *)malloc(sizeof(char) * sizeof(path));
-        if (!key)
-        {
-            eprintf("Error while allocating memory for porgram key.");
-            goto err;
-        }
-        strcpy(key, path);
-    }
+        Dprintf("\t Looking for program %s...", key);
+        pthread_rwlock_rdlock(&prgMap_lock);
+        e = __prgMap_search(key);
+        pthread_rwlock_unlock(&prgMap_lock);
+	
+	return e;
+}
+				      
+mcl_program* prgMap_add(char* path, char* opts, uint64_t flags, uint64_t archs)
+{
+	mcl_program* p;
+	unsigned int ndevs = mcl_desc.info->ndevs;
+	int          fd;
+	char*        key = NULL;
+	
+#if 0
+	if(opts)
+		key = prg_makeKey(path, opts);
+	else{
+#endif
+	key = (char*) malloc(sizeof(char) * strlen(path) + 1);
+	if(!key){
+		eprintf("Error while allocating memory for program key.");
+		goto err;
+	}
+	strcpy(key,path);
+#if 0
+	}
+#endif
+	assert(key != NULL);
+	
+	p = prgMap_search(key);
+	if(p)
+		return p;
 
-    assert(key != NULL);
+	Dprintf("\t Program %s not found, adding new one...", key);
+	p = (mcl_program*) malloc(sizeof(mcl_program));
+	if(!p){
+		eprintf("Error allocating memory for new program (%s)!", path);
+		goto err;
+	}
 
-    p = prgMap_search(key);
-    if (p)
-    {
-        Dprintf("program %s already present.", p->key);
-        free(key);
-        return p;
-    }
+	p->key = key;
+	p->path = (char*) malloc(sizeof(char) * strlen(path) + 1);
+	if(p->path == NULL){
+		eprintf("Erorr allocating memory for program path. Aborting.");
+		goto err_program;	  
+	}
 
-    Dprintf("  Program %s not found, adding new one...", key);
-    p = (mcl_program *)malloc(sizeof(mcl_program));
-    if (!p)
-    {
-        eprintf("Error allocating memmory for new program (%s)!", path);
-        goto err;
-    }
+	if(opts){
+		p->opts = (char*) malloc(sizeof(char) * strlen(opts) + 1);
+		if(p->opts == NULL){
+			eprintf("Erorr allocating memory for program options. Aborting.");
+			goto err_path;	  
+		}
+	}else
+		p->opts = NULL;
+	
+        p->flags = flags;
+        p->targets = archs;
+	p->objs = (mcl_pobj*) malloc(sizeof(mcl_pobj) * ndevs);
+	if(p->objs == NULL){
+		eprintf("Erorr allocating memory for program objects. Aborting.");
+		goto err_opts;	  
+	}
 
-    p->key = key;
-    p->path = (char *)malloc(sizeof(char) * strlen(path) + 1);
-    if (p->path == NULL)
-    {
-        eprintf("Erorr allocating memory for program path. Aborting.");
-        goto err_program;
-    }
+	fd = open(path, O_RDONLY);
+	if(fd == -1){
+		eprintf("Error opening OpenCL program. Aborting.\n");
+		goto err_objs;
+	}
+	p->src_len = lseek(fd, 0, SEEK_END);
+	
+	p->src = (char*) malloc(sizeof(char) * (p->src_len) + 1);
+	if(p->src == NULL){
+		eprintf("Erorr allocating memory for kernel source. Aborting.");
+		goto err_file;
+	}
 
-    if (opts)
-    {
-        p->opts = (char *)malloc(sizeof(char) * strlen(opts) + 1);
-        if (p->opts == NULL)
-        {
-            eprintf("Erorr allocating memory for program options. Aborting.");
-            goto err_path;
-        }
-    }
-    else
-        p->opts = NULL;
+	lseek(fd, 0, SEEK_SET);
+	if(read(fd, (void*) (p->src), p->src_len) != p->src_len){
+		eprintf("Error loading OpenCL code from %s. Aborting.\n", path);
+		goto err_src;
+	}
 
-    p->objs = (mcl_pobj *)malloc(sizeof(mcl_pobj) * ndevs);
-    if (p->objs == NULL)
-    {
-        eprintf("Erorr allocating memory for program objects. Aborting.");
-        goto err_opts;
-    }
+	p->src[p->src_len] = '\0';
+	close(fd);
+	
+	strcpy(p->path, path);
+	if(opts) 
+		strcpy(p->opts, opts);
+	memset((void*) p->objs, 0, sizeof(mcl_pobj) * ndevs);
+	
+	LL_APPEND(prgMap, p);
 
-    fd = open(path, O_RDONLY);
-    if (fd == -1)
-    {
-        printf("\n Error opening OpenCL code. Aborting.\n");
-        goto err_objs;
-    }
-    p->src_len = lseek(fd, 0, SEEK_END);
+	return p;
 
-    p->src = (char *)malloc(sizeof(char) * (p->src_len) + 1);
-    if (p->src == NULL)
-    {
-        eprintf("Erorr allocating memory for kernel source. Aborting.");
-        goto err_file;
-    }
-
-    lseek(fd, 0, SEEK_SET);
-    if (read(fd, (void *)(p->src), p->src_len) != p->src_len)
-    {
-        printf("Error loading OpenCL code from %s. Aborting.\n", path);
-        goto err_src;
-    }
-
-    p->src[p->src_len] = '\0';
-    close(fd);
-
-    strcpy(p->path, path);
-    if (opts)
-        strcpy(p->opts, opts);
-    memset((void *)p->objs, 0, sizeof(mcl_pobj) * ndevs);
-
-    LL_APPEND(prgMap, p);
-
-    return p;
-
-err_src:
-    free(p->src);
-err_file:
-    close(fd);
-err_objs:
-    free(p->objs);
-err_opts:
-    if (p->opts)
-        free(p->opts);
-err_path:
-    free(p->path);
-err_program:
-    free(p);
-err:
-    free(key);
-
-    return NULL;
+ err_src:
+	free(p->src);
+ err_file:
+	close(fd);
+ err_objs:
+	free(p->objs);
+ err_opts:
+	if(p->opts)
+		free(p->opts);
+ err_path:
+	free(p->path);
+ err_program:
+	free(p);
+ err:
+	free(key);
+	
+	return NULL;
 }
 
 static inline void __prgMap_remove(mcl_program *p)
 {
-    Dprintf("Removing program %s...", p->path);
+    // Dprintf("Removing program %s...", p->path);
     LL_DELETE(prgMap, p);
     free(p->objs);
     free(p->src);
@@ -187,20 +188,19 @@ int prgMap_remove(mcl_program *p)
         __prgMap_remove(p);
         return 0;
     }
-    dprintf("Program %s not found.", p->path);
+    // dprintf("Program %s not found.", p->path);
 
     return 1;
 }
 
 void prgMap_finit(void)
 {
-    mcl_program *e;
-    mcl_program *tmp;
-
-    Dprintf("Removing cached programs...");
-    LL_FOREACH_SAFE(prgMap, e, tmp)
-    {
-        __prgMap_remove(e);
-        free(e);
-    }
+	mcl_program* e;
+	mcl_program* tmp;
+	
+	Dprintf("Removing cached programs...");
+	LL_FOREACH_SAFE(prgMap, e, tmp){
+		__prgMap_remove(e);
+		free(e);
+	}
 }

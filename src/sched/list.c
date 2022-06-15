@@ -4,7 +4,7 @@
 #include <minos_internal.h>
 #include <atomics.h>
 
-extern mcl_sched_t mcl_desc;
+extern mcl_sched_t mcl_sched_desc;
 
 /*
  * Return -1,0,1 as for strcmp. Note that it should never be the case that
@@ -28,7 +28,7 @@ int cli_remove(struct mcl_client_struct** head, pid_t pid)
 		if(el->pid == pid){
 			DL_DELETE(*head, el);
 			
-			adec(&mcl_desc.nclients);
+			adec(&mcl_sched_desc.nclients);
 			Dprintf("Client %d removed from list", pid);
             free(el);
 			return 0;
@@ -54,7 +54,7 @@ int cli_add(struct mcl_client_struct** head, struct mcl_client_struct* el)
 	
 	Dprintf("Added %d to client list",el->pid);
 
-	ainc(&mcl_desc.nclients);
+	ainc(&mcl_sched_desc.nclients);
 	
 	return 0;
 }

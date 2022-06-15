@@ -1,7 +1,7 @@
 AM_CFLAGS = -I$(top_srcdir)/src/lib/include
 
-check_PROGRAMS = mcl_init mcl_discovery mcl_null mcl_exec mcl_err mcl_saxpy ocl_saxpy mcl_vadd ocl_vadd ocl_gemm mcl_gemm mcl_resdata mcl_fft ocl_fft
-TESTS = mcl_init mcl_discovery mcl_null mcl_exec mcl_err mcl_saxpy mcl_vadd mcl_gemm mcl_resdata mcl_fft
+check_PROGRAMS = mcl_init mcl_discovery mcl_null mcl_exec mcl_err mcl_saxpy ocl_saxpy mcl_vadd ocl_vadd ocl_gemm mcl_gemm mcl_resdata mcl_fft ocl_fft mcl_tiled_gemm mcl_waitlist
+TESTS =  mcl_init mcl_discovery mcl_null mcl_exec mcl_err mcl_saxpy mcl_vadd mcl_gemm mcl_resdata mcl_fft mcl_tiled_gemm mcl_waitlist
 
 linker_flags = 
 
@@ -85,3 +85,32 @@ ocl_fft_SOURCES     = fft.c utils.c utils.h
 ocl_fft_CFLAGS      = $(AM_CFLAGS) -D__TEST_OCL
 ocl_fft_LDFLAGS     = $(linker_flags)
 ocl_fft_LDADD       = ../src/lib/libmcl.la
+
+if SHARED_MEM
+TESTS += mcl_shm_main
+check_PROGRAMS += mcl_shm_main mcl_shm_producer mcl_shm_consumer
+mcl_shm_main_SOURCES     = shm_main.c utils.c utils.h
+mcl_shm_main_CFLAGS      = $(AM_CFLAGS) -D__TEST_MCL
+mcl_shm_main_LDFLAGS     = $(linker_flags)
+mcl_shm_main_LDADD       = ../src/lib/libmcl.la
+
+mcl_shm_producer_SOURCES     = shm_producer.c utils.c utils.h
+mcl_shm_producer_CFLAGS      = $(AM_CFLAGS) -D__TEST_MCL
+mcl_shm_producer_LDFLAGS     = $(linker_flags)
+mcl_shm_producer_LDADD       = ../src/lib/libmcl.la
+
+mcl_shm_consumer_SOURCES     = shm_consumer.c utils.c utils.h
+mcl_shm_consumer_CFLAGS      = $(AM_CFLAGS) -D__TEST_MCL
+mcl_shm_consumer_LDFLAGS     = $(linker_flags)
+mcl_shm_consumer_LDADD       = ../src/lib/libmcl.la
+endif
+
+mcl_tiled_gemm_SOURCES     = tiled_gemm.c utils.c utils.h
+mcl_tiled_gemm_CFLAGS      = $(AM_CFLAGS) -D__TEST_MCL
+mcl_tiled_gemm_LDFLAGS     = $(linker_flags)
+mcl_tiled_gemm_LDADD       = ../src/lib/libmcl.la
+
+mcl_waitlist_SOURCES       = waitlist.c utils.c utils.h
+mcl_waitlist_CFLAGS        = $(AM_CFLAGS) -D__TEST_MCL
+mcl_waitlist_LDFLAGS       = $(linker_flags)
+mcl_waitlist_LDADD         = ../src/lib/libmcl.la

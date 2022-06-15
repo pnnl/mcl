@@ -88,6 +88,11 @@ int main(int argc, char** argv)
 
        	printf("Synchronous Test...");
 	clock_gettime(CLOCK_MONOTONIC,&start);
+        if(mcl_prg_load("./exec.cl", "", MCL_PRG_SRC)){
+                printf("Error loading program.\n");
+                goto err;
+        }
+                
 	for(i=0, errs=0, submitted=0; i<rep; i++){		
 		hdls[i] = mcl_task_create();
 		
@@ -96,7 +101,7 @@ int main(int argc, char** argv)
 			continue;
 		}
 
-		if(mcl_task_set_kernel(hdls[i], "./exec.cl", "FACT", 2, "", 0x0)){
+		if(mcl_task_set_kernel(hdls[i], "FACT", 2)){
 			printf("Error setting task kernel %s for request %"PRIu64".\n","FACT", i);
 			continue;
 		}
@@ -153,7 +158,7 @@ int main(int argc, char** argv)
 			continue;
 		}
 
-		if(mcl_task_set_kernel(hdls[i], "./exec.cl", "FACT", 2, "", 0x0)){
+		if(mcl_task_set_kernel(hdls[i], "FACT", 2)){
 			printf("Error setting task kernel %s for request %"PRIu64".\n", "FACT", i);
 			continue;
 		}

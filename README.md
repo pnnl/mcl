@@ -33,7 +33,7 @@ Building MCL requires the following libraries and headers to be installed:
 - OpenCL libraries
 - OpenCL-compatible devices
 - UTHash and UTList headers (https://github.com/troydhanson/uthash)
-- 
+- libAtomicOps (https://github.com/ivmai/libatomic_ops)
 
 Headears and libraries should be installed in path that can either be reachable or specified during the configuration step.
 
@@ -43,7 +43,6 @@ OpenCL libaries for each device should be installed in the system. Genearlly:
 - Most AMD installations come with OpenCL libraries
 - For CPU OpenCL implementations, Intel, AMD, ARM, and Apple provide OpenCL libraries.
 - POCL2 is an open-source OpenCL library for CPU (Intel, AMD, ARM, etc.) and NVIVIDA GPUS (http://portablecl.org)
-
 
 ### Pre-Configuration:
 
@@ -201,12 +200,14 @@ Other noteworthy options are:
 - Tracing can be enabled by specifying `--enable-trace` (experimental)
 
 Notes on OpenCL2:
-- Not all vendor OpenCL implementations support OpenCL 2.x specifications. However, some functionalities in MCL do require an OpenCL 2.x-compatible library. The option `--enable-opencl2 ` can be used to enable/disable OpenCL 2.x functionalities.
+- Not all vendor OpenCL implementations support OpenCL 2.x specifications. However, som
+e functionalities in MCL do require an OpenCL 2.x-compatible library. The option `--enable-opencl2 ` can be used to enable/disable OpenCL 2.x functionalities.
 
 Notes on OSX:
-- On OSX MCL can either use Apple OpenCL libraries (Default) or other OpenCL libraries. We have successfully tested POCL (http://portablecl.org). The option `--enable-applecl` can be used to enable/disable Apple OpenCL library. The default value is `enabled` on OSX and `disabled` on other systems.
+- On OSX MCL can either use Apple OpenCL libraries (Default) or other OpenCL libraries.
+ We have successfully tested POCL (http://portablecl.org). The option `--enable-applecl`
+ can be used to enable/disable Apple OpenCL library. The default value is `enabled` on OSX and `disabled` on other systems.
 - OpenCL2 functionalities are disable when Apple OpenCL library is used.
-
 
 
 ### Compiling and installing:
@@ -231,10 +232,20 @@ killall mcl_sched
 
 The test directory also contains OpenCL version of the tests for reference and performance comparison. These versions are built by `make check` but not executed during testing.
 
-## RUST BINDINGS
+## Rust Bindings
 We offer two Rust crates providing bindings for MCL, the source for both crates is hosted in the [rust](https://github.com/pnnl/mcl/tree/master/rust) folder of this repository. Both crates are also available on crates.io
 * [libmcl-sys](https://github.com/pnnl/mcl/tree/master/rust/libmcl-sys) -- (https://crates.io/crates/libmcl-sys): high-level bindings through an "unsafe" interface
 * [mcl-rs](https://github.com/pnnl/mcl/tree/master/rust/mcl-rs) -- (https://crates.io/crates/mcl-rs):high-level bindings providing a "safe" interface
+
+### Using Custom POCL Extensions
+As mentioned above, POCL is an open source implementation of OpenCL for CPUs and some GPUs. Any POCL version which supports OpenCL 1/2 should be inter-operable with MCL. However, we also use the open source nature of the POCL library to support extensions to the OpenCL interface which can be used by MCL. To get these extensions we provide a patch file for a specific POCL release. From the location of the mcl directory (so POCL will be installed as a sibling directory), run:
+```
+./mcl/scripts/get-pocl-shared-mem.sh
+```
+This will get the source code for the POCL extensions. Then configure and build POCL using CMake in accordance with the POCL documentation. To use the extensions within MCL we must tell the library in the configure script:
+```
+./configure --enable-shared-memory --enable-pocl-extensions
+```
 
 ## STATUS
 MCL is a research prototype and still under development, thus not all intended features are yet implemented.
@@ -248,10 +259,10 @@ Rizwan Ashraf
 Ryan Friese  
 Lunzheng (Lenny) Guo  
 Alok Kamatar  
-Burcu Mutlu  
-Polykarpos Thomadakis
+Polykarpos Thomakidis
 
 ### Previous Contributors
+Burcu Mutlu  
 Giulio Picierro
 
 ## LICENCSE
@@ -265,4 +276,4 @@ IF you wish to cite MCL, please, use the following reference:
 Other work that leverage or describe additional MCL features:
 
 * A. V. Kamatar, R. D. Friese and R. Gioiosa, "Locality-Aware Scheduling for Scalable Heterogeneous Environments," 2020 IEEE/ACM International Workshop on Runtime and Operating Systems for Supercomputers (ROSS), 2020, pp. 50-58, doi:10.1109/ROSS51935.2020.00011.
-* Rizwan Ashraf and Roberto Gioiosa, "Exploring the Use of Novel Spatial Accelerators in Scientific Applications" 2020 ACM/SPEC International Conference on Performance Engineering (ICPE), 2022.
+* Rizwan Ashraf and Roberto Gioiosa, "Exploring the Use of Novel Spatial Accelerators in Scientific Applications" 2022 ACM/SPEC International Conference on Performance Engineering (ICPE), 2022.

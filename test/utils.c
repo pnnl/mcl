@@ -264,8 +264,15 @@ int ocl_setup(cl_device_id** dev, cl_context* ctxt, cl_command_queue* q, unsigne
 		goto err_plt;
 	}
 	
-	*q = clCreateCommandQueue(*ctxt, *(*dev + id), 0, &ret);
-	if(ret != CL_SUCCESS){
+#ifdef OPENCL2
+    cl_command_queue_properties props[3] = {CL_QUEUE_PROPERTIES, 0, 0};
+	*q = clCreateCommandQueueWithProperties(*ctxt, *(*dev + id), props, &ret);
+#else
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+    *q = clCreateCommandQueue(*ctxt, *(*dev + id), NULL, &ret);
+#pragma GCC diagnostic pop
+#endif
+    if(ret != CL_SUCCESS){
 		printf("Error creating command queue! Aborting. (%d)\n", ret);
 		goto err_plt;
 	}

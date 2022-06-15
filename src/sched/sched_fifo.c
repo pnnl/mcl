@@ -53,7 +53,7 @@ static int fifo_enqueue(sched_req_t *r)
 		return -1;
 	}
 
-	Dprintf("Adding request (%d,%"PRIu64")", r->pid, r->rid);
+	Dprintf("Adding request (%d,%"PRIu64")", r->key.pid, r->key.rid);
 	pthread_mutex_lock(&fifo_plock);
 	LL_APPEND(plist, el);
 	pthread_mutex_unlock(&fifo_plock);
@@ -70,7 +70,7 @@ static int fifo_dequeue(sched_req_t *r)
 		return -1;
 	}
 
-	Dprintf("Removing request (%d,%"PRIu64")", r->pid, r->rid);
+	Dprintf("Removing request (%d,%"PRIu64")", r->key.pid, r->key.rid);
 	pthread_mutex_lock(&fifo_plock);
 	if(plist)
 		LL_DELETE(plist, el);
@@ -155,8 +155,12 @@ static int fifo_finit(void)
 extern const struct sched_resource_policy ff_policy;
 extern const struct sched_resource_policy rr_policy;
 extern const struct sched_resource_policy delay_policy;
+
+extern const struct sched_eviction_policy lru_eviction_policy;
+
 struct sched_class fifo_class = {
 	.respol = &ff_policy,
+    .evictionpol = &lru_eviction_policy,
 	.init = fifo_init,
 	.finit = fifo_finit,
 	.alloc_request = fifo_alloc_request,

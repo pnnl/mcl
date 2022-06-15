@@ -314,6 +314,8 @@ int test_mcl(CMPTYPE** sources, CMPTYPE** results)
         goto err;
     }
 
+        mcl_prg_load("./fft.cl", copts, MCL_PRG_SRC);
+
     clock_gettime(CLOCK_MONOTONIC,&start);
     
     for(i=0; i<rep; i++){
@@ -323,7 +325,8 @@ int test_mcl(CMPTYPE** sources, CMPTYPE** results)
             printf("Error creating fft handle. Aborting.\n");
             goto err;
         }
-        if(mcl_task_set_kernel(hdl[i], "./fft.cl", FORWARD_FFT_NAME, 3, copts, 0x0)){
+        
+        if(mcl_task_set_kernel(hdl[i], FORWARD_FFT_NAME, 3)){
             printf("Error setting fft kernel. Aborting.\n");
             goto err;
         }
@@ -374,7 +377,7 @@ int test_mcl(CMPTYPE** sources, CMPTYPE** results)
                 printf("Error creating handle for ifft. Aborting.\n");
                 goto err;
             }
-            if(mcl_task_set_kernel(hdl[i], "./fft.cl", FORWARD_FFT_NAME, 3, copts, 0x0)){
+            if(mcl_task_set_kernel(hdl[i], FORWARD_FFT_NAME, 3)){
                 printf("Error setting kernel for ifft. Aborting.\n");
                 goto err;
             }
