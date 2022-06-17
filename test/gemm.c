@@ -61,7 +61,11 @@ int test_mcl(FTYPE* A, FTYPE* B, FTYPE* C, size_t N)
 	unsigned int    errs = 0;
 	float           rtime;
 	int             ret;
-	
+	char             src_path[1024];
+
+        strcpy(src_path, XSTR(_MCL_TEST_PATH));
+        strcat(src_path, "/gemmN.cl");
+
 	printf("MCL Test...");
 
 	hdl = (mcl_handle**) malloc(sizeof(mcl_handle*) * rep);
@@ -70,9 +74,9 @@ int test_mcl(FTYPE* A, FTYPE* B, FTYPE* C, size_t N)
 		goto err;
 	}
 #ifdef DOUBLE_PRECISION
-        mcl_prg_load("./gemmN.cl", "-DDOUBLE_PRECISION", MCL_PRG_SRC);
+        mcl_prg_load(src_path, "-DDOUBLE_PRECISION", MCL_PRG_SRC);
 #else
-        mcl_prg_load("./gemmN.cl", "-DSINGLE_PRECISION", MCL_PRG_SRC);
+        mcl_prg_load(src_path, "-DSINGLE_PRECISION", MCL_PRG_SRC);
 #endif
 
 	clock_gettime(CLOCK_MONOTONIC,&start);

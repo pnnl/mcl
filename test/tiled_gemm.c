@@ -56,6 +56,11 @@ int test_mcl(double* A, double* B, double* C, size_t N)
      * test, I am just breaking matrix A, and matrix C by row. For the best performance on GEMM
      * we still need to implement more functionality **/
 
+       char             src_path[1024];
+
+        strcpy(src_path, XSTR(_MCL_TEST_PATH));
+        strcat(src_path, "/gemmN.cl");
+
 	struct timespec start, end;
 	mcl_handle**    hdl = NULL;
 	const size_t    msize    = N * N * sizeof(double);
@@ -77,9 +82,9 @@ int test_mcl(double* A, double* B, double* C, size_t N)
 	}
 
 #ifdef DOUBLE_PRECISION
-        mcl_prg_load("./gemmN.cl", "-DDOUBLE_PRECISION", MCL_PRG_SRC);
+        mcl_prg_load(src_path, "-DDOUBLE_PRECISION", MCL_PRG_SRC);
 #else
-        mcl_prg_load("./gemmN.cl", "-DSINGLE_PRECISION", MCL_PRG_SRC);
+        mcl_prg_load(src_path, "-DSINGLE_PRECISION", MCL_PRG_SRC);
 #endif
 
 	clock_gettime(CLOCK_MONOTONIC,&start);

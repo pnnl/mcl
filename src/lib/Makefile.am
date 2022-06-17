@@ -8,7 +8,7 @@ libmcl_la_SOURCES += include/minos.h include/minos_internal.h ../common/include/
 	../common/include/atomics.h ../common/include/stats.h ../common/include/ptrhash.h  \
 	../common/AvlTree.h
 
-libmcl_la_LDFLAGS = ../common/nbhashmap/nbhashmap.o
+libmcl_la_LDFLAGS = $(top_srcdir)/src/common/nbhashmap/nbhashmap.o
 
 if SHARED_MEM
 libmcl_la_SOURCES += shared_memory.c ../common/include/mem_list.h

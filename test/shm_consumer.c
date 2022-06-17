@@ -76,6 +76,9 @@ err:
 int main(int argc, char** argv)
 {
     int i;
+       char             src_path[1024];
+        strcpy(src_path, XSTR(_MCL_TEST_PATH));
+        strcat(src_path, "/vadd.cl");
 
     parse_global_opts(argc, argv);
     switch(type){
@@ -101,7 +104,7 @@ int main(int argc, char** argv)
     /** TODO: Read the data from stdin and prcocess it**/
     printf("Initializing Client.\n");
     mcl_init(workers, 0x0);
-    mcl_prg_load("./vadd.cl", "", MCL_PRG_SRC);
+    mcl_prg_load(src_path, "", MCL_PRG_SRC);
 
     mcl_handle** hdls = calloc(rep, sizeof(mcl_handle*));
     int* completed = malloc(sizeof(int) * rep);

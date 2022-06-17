@@ -52,7 +52,10 @@ int test_ocl(float a, float* x, float* y, float* z, size_t size)
 	int              i;
 	size_t           klen;
         char*            knames;
+       char             src_path[1024];
 
+        strcpy(src_path, XSTR(_MCL_TEST_PATH));
+        strcat(src_path, "/saxpy.cl");
 	printf("OpenCL Test...");
 
 #ifdef VERBOSE
@@ -67,7 +70,7 @@ int test_ocl(float a, float* x, float* y, float* z, size_t size)
 	printf("]\n");
 #endif
 
-	if(mcl_load("./saxpy.cl", &src_code)){
+	if(mcl_load(src_path, &src_code)){
 		printf("Error loading OpenCL kernel! Aborting.\n");
 		goto err;
 	}
@@ -233,7 +236,11 @@ int test_mcl(float a, float* x, float* y, float* z, size_t size)
 	uint64_t        pes[MCL_DEV_DIMS] = {size,1,1};
 	uint64_t        i;
 	unsigned int    errs = 0;
-	
+	char             src_path[1024];
+
+        strcpy(src_path, XSTR(_MCL_TEST_PATH));
+        strcat(src_path, "/saxpy.cl");
+
 	printf("MCL Test...");
 
 #ifdef VERBOSE
@@ -253,7 +260,7 @@ int test_mcl(float a, float* x, float* y, float* z, size_t size)
 		goto err;
 	}
 
-	if(mcl_prg_load("./saxpy.cl", "", MCL_PRG_SRC)){
+	if(mcl_prg_load(src_path, "", MCL_PRG_SRC)){
                 printf("Error loading program. Aborting.\n");
                 goto err;
         }

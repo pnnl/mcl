@@ -51,7 +51,11 @@ int main(int argc, char** argv)
 	int                 ret = 0;
 	uint64_t            pes[MCL_DEV_DIMS] = {1,1,1};
 	unsigned int        errs, submitted;
-	
+	char             src_path[1024];
+
+        strcpy(src_path, XSTR(_MCL_TEST_PATH));
+        strcat(src_path, "/exec.cl");
+
 	mcl_banner("EXEC Request Test");
 
 	parse_global_opts(argc, argv);
@@ -88,7 +92,7 @@ int main(int argc, char** argv)
 
        	printf("Synchronous Test...");
 	clock_gettime(CLOCK_MONOTONIC,&start);
-        if(mcl_prg_load("./exec.cl", "", MCL_PRG_SRC)){
+        if(mcl_prg_load(src_path, "", MCL_PRG_SRC)){
                 printf("Error loading program.\n");
                 goto err;
         }

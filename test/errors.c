@@ -65,6 +65,12 @@ int main(int argc, char** argv)
 	uint64_t    out      = 0;
 	uint64_t    pes[3]   = {0, 0, 0};
         int ret = 0;
+        char             src_path[1024];
+
+        strcpy(src_path, XSTR(_MCL_TEST_PATH));
+        strcat(src_path, "/exec.cl");
+
+
 	mcl_banner("ERROR Test");
 
 	parse_opts(argc, argv);
@@ -75,7 +81,7 @@ int main(int argc, char** argv)
 	}
 	
 	printf("\n");
-	mcl_prg_load("./exec.cl", "", MCL_PRG_SRC);
+	mcl_prg_load(src_path, "", MCL_PRG_SRC);
 
 	printf("%-40s", "Checking NULL handle error...");
 	if(mcl_exec(hdl, pes, NULL, 0x0))

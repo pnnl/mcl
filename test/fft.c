@@ -98,8 +98,12 @@ int test_ocl(CMPTYPE** sources, CMPTYPE** results)
 	size_t           globalWorkSize[] = {size/2, 1, 1};
 	float            rtime;
 	int              i;
-    uint64_t         bytes = size * sizeof(CMPTYPE);
-    uint64_t         niters = (uint64_t)floor(log2((double)size));
+        uint64_t         bytes = size * sizeof(CMPTYPE);
+        uint64_t         niters = (uint64_t)floor(log2((double)size));
+        char             src_path[1024];
+
+        strcpy(src_path, XSTR(_MCL_TEST_PATH));
+        strcat(src_path, "/fft.cl");
 
 #ifdef DOUBLE_PRECISION
     char* copts = "-DK_DOUBLE_PRECISION";
@@ -107,7 +111,7 @@ int test_ocl(CMPTYPE** sources, CMPTYPE** results)
     char* copts = "-DSINGLE_PRECISION";
 #endif
 
-	if(mcl_load("./fft.cl", &src_code)){
+	if(mcl_load(src_path, &src_code)){
 		printf("Error loading OpenCL kernel! Aborting.\n");
 		goto err;
 	}
@@ -294,6 +298,10 @@ int test_mcl(CMPTYPE** sources, CMPTYPE** results)
     int32_t         p = 1;
     unsigned long   arg_flags = MCL_ARG_INPUT|MCL_ARG_BUFFER|MCL_ARG_RESIDENT|MCL_ARG_DYNAMIC;
     uint64_t        bytes = size * sizeof(CMPTYPE);
+       char             src_path[1024];
+
+        strcpy(src_path, XSTR(_MCL_TEST_PATH));
+        strcat(src_path, "/fft.cl");
 
 #ifdef DOUBLE_PRECISION
     char* copts = "-DK_DOUBLE_PRECISION";
@@ -314,7 +322,7 @@ int test_mcl(CMPTYPE** sources, CMPTYPE** results)
         goto err;
     }
 
-        mcl_prg_load("./fft.cl", copts, MCL_PRG_SRC);
+        mcl_prg_load(src_path, copts, MCL_PRG_SRC);
 
     clock_gettime(CLOCK_MONOTONIC,&start);
     

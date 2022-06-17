@@ -205,7 +205,10 @@ int main(int argc, char** argv)
 {
 	FPTYPE          *A, *B, *C, *C_test;
 	int             i, j, ret = 0;
+        char             src_path[1024];
 
+        strcpy(src_path, XSTR(_MCL_TEST_PATH));
+        strcat(src_path, "/gemmN.cl");
 
 	mcl_banner("Resident Data Test");
 
@@ -253,9 +256,9 @@ int main(int argc, char** argv)
         memset(C_test, 0, size * size * sizeof(FPTYPE));
 
 #ifdef DOUBLE_PRECISION
-        mcl_prg_load("./gemmN.cl", "-DDOUBLE_PRECISION", MCL_PRG_SRC);
+        mcl_prg_load(src_path, "-DDOUBLE_PRECISION", MCL_PRG_SRC);
 #else
-        mcl_prg_load("./gemmN.cl", "-DSINGLE_PRECISION", MCL_PRG_SRC);
+        mcl_prg_load(src_path, "-DSINGLE_PRECISION", MCL_PRG_SRC);
 #endif
 
         gemm_seq(A, B, C_test, size);

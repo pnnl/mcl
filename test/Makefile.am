@@ -1,4 +1,4 @@
-AM_CFLAGS = -I$(top_srcdir)/src/lib/include
+AM_CFLAGS = -I$(top_srcdir)/src/lib/include -D_MCL_TEST_PATH=$(srcdir)
 
 check_PROGRAMS = mcl_init mcl_discovery mcl_null mcl_exec mcl_err mcl_saxpy ocl_saxpy mcl_vadd ocl_vadd ocl_gemm mcl_gemm mcl_resdata mcl_fft ocl_fft mcl_tiled_gemm mcl_waitlist
 TESTS =  mcl_init mcl_discovery mcl_null mcl_exec mcl_err mcl_saxpy mcl_vadd mcl_gemm mcl_resdata mcl_fft mcl_tiled_gemm mcl_waitlist

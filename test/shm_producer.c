@@ -64,7 +64,11 @@ err:
 
 int main(int argc, char** argv)
 {
-    int i;
+        int i;
+        char             src_path[1024];
+
+        strcpy(src_path, XSTR(_MCL_TEST_PATH));
+        strcat(src_path, "/vadd.cl");
 
     parse_global_opts(argc, argv);
     switch(type){
@@ -92,7 +96,7 @@ int main(int argc, char** argv)
     int* completed = malloc(sizeof(int) * rep);
     memset(completed, 0, sizeof(int) * rep);
 
-    mcl_prg_load("./vadd.cl", "", MCL_PRG_SRC);
+    mcl_prg_load(src_path, "", MCL_PRG_SRC);
 
     pid_t pid = getpid();
     printf("%d\n", pid);
