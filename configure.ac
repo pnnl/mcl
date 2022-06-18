@@ -179,11 +179,12 @@ if test "$build_mac" = "yes" ; then
 echo "          Apple OCL:      $enable_appleocl"
 fi
 echo "          IPSHM:          $enable_ipshmem"
-echo "          OpenCL2:        $enable_pocl_extensions"
+echo "          POCL Ext:       $enable_pocl_extensions"
 echo ""
 echo "Compilers: "
 echo "		 C:		$CC"
 echo "		 OpenCL:	$found_opencl_h"
+echo "		 CPPFLAGS:	$CPPFLAGS"
 echo "		 CFLAGS:	$CFLAGS"
 echo "		 LDFLAGS:	$LDFLAGS"
 echo ""
