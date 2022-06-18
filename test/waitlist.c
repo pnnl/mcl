@@ -34,9 +34,12 @@ int test_mcl(uint64_t* X, uint64_t* V, size_t N)
 	unsigned int    errs = 0;
 	double          rtime;
 	int             ret;
-    unsigned long   arg_flags = MCL_ARG_BUFFER|MCL_ARG_INPUT|MCL_ARG_RESIDENT|MCL_ARG_DYNAMIC;
+        unsigned long   arg_flags = MCL_ARG_BUFFER|MCL_ARG_INPUT|MCL_ARG_RESIDENT|MCL_ARG_DYNAMIC;
+	char            src_path[1024];
 
-    //fprintf(stderr, "Allocating handles.\n");
+        strcpy(src_path, XSTR(_MCL_TEST_PATH));
+        strcat(src_path, "/integrate.cl");
+        //fprintf(stderr, "Allocating handles.\n");
 
 	hdl = (mcl_handle**) malloc(sizeof(mcl_handle*) * rep);
 	if(!hdl){
@@ -44,9 +47,9 @@ int test_mcl(uint64_t* X, uint64_t* V, size_t N)
 		goto err;
 	}
 
-    mcl_prg_load("./integrate.cl", "", MCL_PRG_SRC);
+        mcl_prg_load(src_path, "", MCL_PRG_SRC);
 
-    clock_gettime(CLOCK_MONOTONIC,&start);
+        clock_gettime(CLOCK_MONOTONIC,&start);
 	for(i=0; i<rep; i++){
 		hdl[i] = mcl_task_create();
 		if(!hdl[i]){
