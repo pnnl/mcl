@@ -236,7 +236,7 @@ int test_mcl(float a, float* x, float* y, float* z, size_t size)
 	uint64_t        pes[MCL_DEV_DIMS] = {size,1,1};
 	uint64_t        i;
 	unsigned int    errs = 0;
-	char             src_path[1024];
+	char            src_path[1024];
 
         strcpy(src_path, XSTR(_MCL_TEST_PATH));
         strcat(src_path, "/saxpy.cl");
