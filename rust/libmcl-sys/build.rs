@@ -67,6 +67,7 @@ fn main() {
 
     // Rebuild if include file has changed
     println!("cargo:rerun-if-changed={}/include/minos.h", mcl_path);
+    println!("cargo:rerun-if-changed={}/include/mcl/mcl_config.h", mcl_path);
     println!("cargo:rerun-if-changed={}/lib/libmcl.a", mcl_path);
 
     // The bindgen::Builder is the main entry point
@@ -75,7 +76,8 @@ fn main() {
     let mut bindings = bindgen::Builder::default()
         // The input header we would like to generate
         // bindings for.
-        .header(mcl_path.clone()+"/include/minos.h");
+        .header(mcl_path.clone()+"/include/minos.h")
+        .clang_arg("-I".to_owned()+&mcl_path+"/include");
     
     if !ocl_incpath.is_empty() {
         bindings = bindings.clang_arg("-I".to_owned()+&ocl_incpath);

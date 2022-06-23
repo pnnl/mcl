@@ -14,7 +14,7 @@ keywords = ["heterogeneous","gpu","fpga","hpc","runtime"]
 rand = "0.8.3"
 
 [dependencies]
-libmcl-sys = "0.1.1"
+libmcl-sys = {version = "0.1.1", path = "../libmcl-sys"}
 serde={version = "1.0.126", features = ["derive"] }
 async-std = {version = "0.99.3", features = ["unstable"]}
 

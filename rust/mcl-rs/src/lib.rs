@@ -32,23 +32,19 @@ pub enum DevType {
     CPU,
     GPU,
     FPGA,
-    #[cfg(feature="versal")]
-    NVDLA,
-    #[cfg(feature="versal")]
-    SIMDEV,
+    DFT,
     ANY,
 }
 
 #[derive(Clone, serde::Serialize, serde::Deserialize)]
-pub enum KernelFlag {
+pub enum PrgFlag {
     NONE,
-    #[cfg(feature="versal")]
     SRC,
-    #[cfg(feature="versal")]
+    IR,
     BIN,
-    #[cfg(feature="versal")]
-    SIMDEV,
-    NORES,
+    GRAPH,
+    MASK,
+    NORES
 }
 
 #[derive(Clone, PartialEq)]
@@ -93,11 +89,27 @@ pub struct Mcl{
 }
 
 impl Mcl{
+
     /// Creates a new mcl task from the given kernel
     /// 
     /// ## Arguments
     /// 
-    /// * `prog_path` - The path to the file where the kernel resides
+    /// * `prog_path` - The path to the kernel source
+    /// 
+    /// Returns a new Task that can be compiled to a CompiledTask
+    /// 
+    /// # Example
+    /// 
+    ///    mcl::prog("my_path", "my_comperter_args", PrgFlag::Src);
+    /// 
+    pub fn prog(&self, prog_path: &str) -> Prog{
+        Prog::from( prog_path)
+    }
+
+    /// Creates a new mcl task from the given kernel
+    /// 
+    /// ## Arguments
+    /// 
     /// * `kernel_name` - The kernel name
     /// * `num_args` - The number of arguments of the kernel
     /// 
@@ -105,10 +117,10 @@ impl Mcl{
     /// 
     /// # Example
     /// 
-    ///     let t = Task::from("my_path", "my_kernel", 2);
+    ///     let t = Task::from("my_kernel", 2);
     /// 
-    pub fn task(&self, kernel_name: &str, kernel_name_cl: &str, nargs: usize) -> CompiledTask{
-        Task::from( kernel_name, kernel_name_cl, nargs).compile()
+    pub fn task(&self, kernel_name_cl: &str, nargs: usize) -> CompiledTask{
+        Task::from( kernel_name_cl, nargs).compile()
     }
 
     // /// Initialize a task to run the specified kernel
@@ -121,7 +133,7 @@ impl Mcl{
     // /// `num_args` - The number of arguments the kernel accepts
     // /// `compile_args` - Compilation args to compile the kernel with
     // /// `flags` - 0 or MCL_FLAG_NO_RES
-    // pub fn task_set_kernel(hdl: *mut mcl_handle, path: &str, name: &str, num_args: u64, compile_args: &str, flags: crate::KernelFlag ) {
+    // pub fn task_set_kernel(hdl: *mut mcl_handle, path: &str, name: &str, num_args: u64, compile_args: &str, flags: crate::PrgFlag ) {
     //     low_level::task_set_kernel(hdl, path, name, num_args, compile_args, flags.into());
     // }
 
@@ -399,7 +411,7 @@ impl TaskHandle {
     ///     let pes: [u64; 3] = vec![1, 1, 1];
     /// 
     ///     let hdl = Task::from("my_path", "my_kernel", 0)
-    ///                 .flags(KernelFlag::SRC)
+    ///                 .flags(PrgFlag::SRC)
     ///                 .compile_with_args("-D MYDEF")
     ///                 .exec(pes);
     /// 
@@ -415,7 +427,7 @@ impl TaskHandle {
     ///     let pes: [u64; 3] = vec![1, 1, 1];
     /// 
     ///     let hdl = Task::from("my_path", "my_kernel", 0)
-    ///                 .flags(KernelFlag::SRC)
+    ///                 .flags(PrgFlag::SRC)
     ///                 .compile_with_args("-D MYDEF")
     ///                 .exec(pes);
     /// 
@@ -432,7 +444,7 @@ impl TaskHandle {
     ///     let pes: [u64; 3] = vec![1, 1, 1];
     /// 
     ///     let hdl = Task::from("my_path", "my_kernel", 0)
-    ///                 .flags(KernelFlag::SRC)
+    ///                 .flags(PrgFlag::SRC)
     ///                 .compile_with_args("-D MYDEF")
     ///                 .exec();
     /// 
@@ -669,7 +681,7 @@ impl CompiledTask {
     ///     let pes: [u64; 3] = vec![1, 1, 1];
     /// 
     ///     let hdl = Task::from("my_path", "my_kernel", 1)
-    ///                 .flags(KernelFlag::SRC)
+    ///                 .flags(PrgFlag::SRC)
     ///                 .compile()
     ///                 .arg(TaskArg::input_slice(&data))
     ///                 .exec(pes)
@@ -702,7 +714,7 @@ impl CompiledTask {
     ///     let les: [u64; 3] = vec![1, 1, 1];
     ///     let pes: [u64; 3] = vec![1, 1, 1];
     ///     let hdl = Task::from("my_path", "my_kernel", 1)
-    ///                 .flags(KernelFlag::SRC)
+    ///                 .flags(PrgFlag::SRC)
     ///                 .compile()
     ///                 .arg(TaskArg::input_slice(&data))
     ///                 .lwsize(les)
@@ -730,7 +742,7 @@ impl CompiledTask {
     ///     let les: [u64; 3] = vec![1, 1, 1];
     ///     let pes: [u64; 3] = vec![1, 1, 1];
     ///     let hdl = Task::from("my_path", "my_kernel", 1)
-    ///                 .flags(KernelFlag::SRC)
+    ///                 .flags(PrgFlag::SRC)
     ///                 .compile()
     ///                 .arg(TaskArg::input_slice(&data))
     ///                 .lwsize(les)
@@ -1207,13 +1219,114 @@ impl<'a, T> TaskArg<'a, T> {
 } 
 
 
+pub struct Prog{
+    prog_path: String,
+    compile_args: String,
+    kernel_flag: PrgFlag,
+}
+
+impl Prog{
+
+    /// Creates a new mcl prog from the given path
+    /// 
+    /// ## Arguments
+    /// 
+    /// * `prog_path` - The path to the file where the kernel resides
+    /// 
+    /// Returns a new Prog that can be compiled
+    /// 
+    /// # Example
+    /// 
+    ///     let p = Prog::from("my_path");
+    /// 
+    pub fn from(prog_path: &str) -> Self {
+        let p = Prog{
+            prog_path: prog_path.to_string(),
+            compile_args: "".to_string(),
+            #[cfg(feature="versal")]
+            kernel_flag: PrgFlag::SRC,
+            #[cfg(not(feature="versal"))]
+            kernel_flag: PrgFlag::NONE,
+        };
+        
+        p
+    }
+
+    /// Sets extra flags for the Compiled Program
+    /// 
+    /// ## Arguments
+    /// 
+    /// * `flags` - The extra flags to use for the compilation
+    /// 
+    /// # Example
+    /// 
+    ///      Prog::from("my_path")
+    ///                 .flags(PrgFlag::SRC)
+    ///                 .compile_with_args("-D MYDEF");
+    /// 
+    pub fn flags(mut self, k_flag: PrgFlag) -> Self {
+
+        self.kernel_flag = k_flag;
+
+        self
+    }
+
+    /// load the mcl program
+    /// 
+    /// # Example
+    /// 
+    ///     let compiled_t = Prog::from("my_path")
+    ///                 .compile();
+    /// 
+    pub fn load(self){
+        low_level::prg_load(&self.prog_path,&self.compile_args, self.kernel_flag);
+        // low_level::task_set_kernel(self.hdl.c_handle, &self.kernel_name, self.num_args as u64);
+
+        // CompiledTask {
+        //     // num_args: self.num_args,
+        //     curr_arg: 0,
+        //     hdl: self.hdl,
+        //     dev: DevType::GPU,
+        //     les: [1; 3],
+        // }
+    }
+
+    /// Creates a CompiledTask from the Task with the given compilation args
+    /// 
+    /// ## Arguments
+    /// 
+    /// * `compile_args` - The compile_args to use for the compilation
+    /// 
+    /// Returns a new CompiledTask
+    /// 
+    ///     
+    /// # Example
+    /// 
+    ///     let compiled_t =Prog::from("my_path")
+    ///                 .compile_with_args("-D MYDEF");
+    /// 
+    pub fn compile_args(mut self, compile_args: &str) -> Self {
+
+        self.compile_args = compile_args.to_string();
+        self
+        // low_level::prg_load(&self.prog_path,&self.compile_args, self.kernel_flag);
+        // low_level::task_set_kernel(self.hdl.c_handle, &self.prog_path, &self.kernel_name, self.num_args as u64, &self.compile_args, self.kernel_flag);
+    
+        // CompiledTask {
+        //     // num_args: self.num_args,
+        //     curr_arg: 0,
+        //     hdl: self.hdl,
+        //     dev: DevType::GPU,
+        //     les: [1; 3],
+        // }
+    }
+}
+
 /// A Task can is used to create an incomplete mcl task from source or binary
 pub struct Task {
 
-    prog_path: String,
+    // prog_path: String,
     kernel_name: String,
-    compile_args: String,
-    kernel_flag: KernelFlag,
     num_args: usize,
     hdl: TaskHandle,
 }
@@ -1235,41 +1348,13 @@ impl Task {
     /// 
     ///     let t = Task::from("my_path", "my_kernel", 2);
     /// 
-    pub fn from(prog_path: &str, kernel_name: &str, num_args: usize) -> Self {
+    pub fn from( kernel_name: &str, num_args: usize) -> Self {
 
         Task {
-            prog_path: prog_path.to_string(),
             kernel_name: kernel_name.to_string(), 
-            compile_args: "".to_string(),
-            #[cfg(feature="versal")]
-            kernel_flag: KernelFlag::SRC,
-            #[cfg(not(feature="versal"))]
-            kernel_flag: KernelFlag::NONE,
             num_args: num_args,
             hdl: TaskHandle { c_handle: low_level::task_create(), },
         }
-    }
-
-
-    /// Sets extra flags for the CompiledTask
-    /// 
-    /// ## Arguments
-    /// 
-    /// * `flags` - The extra flags to use for the compilation
-    /// 
-    /// Returns the Compiled task with the flags set
-    /// 
-    /// # Example
-    /// 
-    ///     let compiled_t = Task::from("my_path", "my_kernel", 0)
-    ///                 .flags(KernelFlag::SRC)
-    ///                 .compile_with_args("-D MYDEF");
-    /// 
-    pub fn flags(mut self, k_flag: KernelFlag) -> Self {
-
-        self.kernel_flag = k_flag;
-
-        self
     }
 
     /// Creates a CompiledTask from the Task
@@ -1283,36 +1368,8 @@ impl Task {
     /// 
     pub fn compile(self) -> CompiledTask {
 
-        low_level::task_set_kernel(self.hdl.c_handle, &self.prog_path, &self.kernel_name, self.num_args as u64, &self.compile_args, self.kernel_flag);
+        low_level::task_set_kernel(self.hdl.c_handle,  &self.kernel_name, self.num_args as u64);
 
-        CompiledTask {
-            // num_args: self.num_args,
-            curr_arg: 0,
-            hdl: self.hdl,
-            dev: DevType::GPU,
-            les: [1; 3],
-        }
-    }
-
-    /// Creates a CompiledTask from the Task with the given compilation args
-    /// 
-    /// ## Arguments
-    /// 
-    /// * `compile_args` - The compile_args to use for the compilation
-    /// 
-    /// Returns a new CompiledTask
-    /// 
-    ///     
-    /// # Example
-    /// 
-    ///     let compiled_t = Task::from("my_path", "my_kernel", 2)
-    ///                 .compile_with_args("-D MYDEF");
-    /// 
-    pub fn compile_with_args(mut self, compile_args: &str) -> CompiledTask {
-
-        self.compile_args = compile_args.to_string();
-        low_level::task_set_kernel(self.hdl.c_handle, &self.prog_path, &self.kernel_name, self.num_args as u64, &self.compile_args, self.kernel_flag);
-    
         CompiledTask {
             // num_args: self.num_args,
             curr_arg: 0,
@@ -1400,9 +1457,9 @@ impl Transfer {
     pub fn arg<T>(mut self, arg: TaskArg<T>) -> Self {
             
         match arg.data {
-            TaskArgData::Mutable(mut x) => low_level::transfer_set_arg_mut(self.hdl.c_handle, self.curr_arg as u64, &mut x, arg.flags),
-            TaskArgData::Immutable(x) => low_level::transfer_set_arg(self.hdl.c_handle, self.curr_arg as u64, x, arg.flags),
-            TaskArgData::NoData(x) => low_level::transfer_set_local(self.hdl.c_handle, self.curr_arg as u64, x, arg.flags)
+            TaskArgData::Mutable(mut x) => low_level::transfer_set_arg_mut(self.hdl.c_handle, self.curr_arg as u64, &mut x, 0, arg.flags),
+            TaskArgData::Immutable(x) => low_level::transfer_set_arg(self.hdl.c_handle, self.curr_arg as u64, x, 0, arg.flags),
+            TaskArgData::NoData(x) => low_level::transfer_set_local(self.hdl.c_handle, self.curr_arg as u64, x, 0, arg.flags)
         }
         self.curr_arg += 1;
 
@@ -1468,25 +1525,38 @@ mod low_level {
     /// 
     /// ## Arguments
     /// 
+    /// `path` - Path to the OpenCL file that include the kernel to run
+    /// `compile_args` - Compilation args to compile the kernel with
+    /// `flags` - 0 or MCL_FLAG_NO_RES
+    pub(crate) fn prg_load(path: &str, compile_args: &str, flags: crate::PrgFlag ) {
+        let flag = match flags {
+            crate::PrgFlag::NONE => MCL_PRG_NONE,
+            crate::PrgFlag::SRC => MCL_PRG_SRC,
+            crate::PrgFlag::IR => MCL_PRG_IR,
+            crate::PrgFlag::BIN => MCL_PRG_BIN,
+            crate::PrgFlag::GRAPH => MCL_PRG_GRAPH,
+            crate::PrgFlag::MASK => MCL_PRG_MASK,
+            crate::PrgFlag::NORES => MCL_FLAG_NO_RES,
+        };
+        unsafe {
+            mcl_prg_load( CString::new(path).unwrap().into_raw(), CString::new(compile_args).unwrap().into_raw(), flag.into());
+        }
+    }
+
+    /// Initialize a task to run the specified kernel
+    /// 
+    /// ## Arguments
+    /// 
     /// `hdl` - Handle associated with task
     /// `path` - Path to the OpenCL file that include the kernel to run
     /// `name` - The OpenCL kernel to run
     /// `num_args` - The number of arguments the kernel accepts
     /// `compile_args` - Compilation args to compile the kernel with
     /// `flags` - 0 or MCL_FLAG_NO_RES
-    pub(crate) fn task_set_kernel(hdl: *mut mcl_handle, path: &str, name: &str, num_args: u64, compile_args: &str, flags: crate::KernelFlag ) {
-        let flag = match flags {
-            crate::KernelFlag::NONE => 0,
-            #[cfg(feature="versal")]
-            crate::KernelFlag::SRC => MCL_KERNEL_SRC,
-            #[cfg(feature="versal")]
-            crate::KernelFlag::BIN => MCL_KERNEL_BIN,
-            #[cfg(feature="versal")]
-            crate::KernelFlag::SIMDEV => MCL_KERNEL_SIMDEV,
-            crate::KernelFlag::NORES => MCL_FLAG_NO_RES,
-        };
+    pub(crate) fn task_set_kernel(hdl: *mut mcl_handle, name: &str, num_args: u64 ) {
+       
         unsafe {
-            mcl_task_set_kernel(hdl, CString::new(path).unwrap().into_raw(), CString::new(name).unwrap().into_raw(), num_args,  CString::new(compile_args).unwrap().into_raw(), flag.into());
+            mcl_task_set_kernel(hdl,  CString::new(name).unwrap().into_raw(), num_args);
         }
     }
 
@@ -1576,10 +1646,7 @@ mod low_level {
             crate::DevType::CPU => MCL_TASK_CPU,
             crate::DevType::GPU => MCL_TASK_GPU,
             crate::DevType::FPGA => MCL_TASK_FPGA,
-            #[cfg(feature="versal")]
-            crate::DevType::NVDLA => MCL_TASK_NVDLA,
-            #[cfg(feature="versal")]
-            crate::DevType::SIMDEV => MCL_TASK_SIMDEV,
+            crate::DevType::DFT => MCL_TASK_DFT_FLAGS,
             crate::DevType::ANY => MCL_TASK_ANY,
         };
         let err = unsafe { mcl_exec(hdl, pes.as_mut_ptr() as *mut _ as *mut u64, les.as_mut_ptr() as *mut _ as *mut u64, flags.into()) };
@@ -1654,9 +1721,9 @@ mod low_level {
     /// 
     /// Returns a new transfer handle
     #[cfg(not(feature="versal"))]
-    pub(crate) fn transfer_create(nargs: u64, ncopies: u64, _flags: u64) -> *mut mcl_transfer {
+    pub(crate) fn transfer_create(nargs: u64, ncopies: u64, flags: u64) -> *mut mcl_transfer {
 
-        let transfer_hdl = unsafe { mcl_transfer_create(nargs, ncopies) };
+        let transfer_hdl = unsafe { mcl_transfer_create(nargs, ncopies, flags) };
         if transfer_hdl.is_null() {
             panic!("Could not create transfer TaskHandle");
         }
@@ -1675,27 +1742,27 @@ mod low_level {
     /// * `array_slice` - The data to pass
     /// * `flags` - Any of the MCL_ARG_* flags. Must include one of MCL_ARG_BUFFER or MCL_ARG_SCALAR
     #[cfg(not(feature="versal"))]
-    pub(crate) fn transfer_set_arg_mut<T>(t_hdl: *mut mcl_transfer , idx: u64, array_slice: &mut [T], flags: u64) {
+    pub(crate) fn transfer_set_arg_mut<T>(t_hdl: *mut mcl_transfer , idx: u64, array_slice: &mut [T], offset: isize, flags: u64) {
 
-        let err = unsafe { mcl_transfer_set_arg(t_hdl, idx, array_slice.as_mut_ptr() as *mut c_void, (array_slice.len() * size_of::<T>()) as u64, flags) };
+        let err = unsafe { mcl_transfer_set_arg(t_hdl, idx, array_slice.as_mut_ptr() as *mut c_void, (array_slice.len() * size_of::<T>()) as u64, offset as i64, flags) };
         if err != 0 {
             panic!("Error {}. Could not set transfer argument", err);
         }
     }
 
     #[cfg(not(feature="versal"))]
-    pub(crate) fn transfer_set_arg<T>(t_hdl: *mut mcl_transfer, idx: u64, array_slice: & [T], flags: u64) {
+    pub(crate) fn transfer_set_arg<T>(t_hdl: *mut mcl_transfer, idx: u64, array_slice: & [T], offset: isize, flags: u64) {
 
-        let err = unsafe { mcl_transfer_set_arg(t_hdl, idx, array_slice.as_ptr() as *mut c_void, (array_slice.len() * size_of::<T>()) as u64, flags) };
+        let err = unsafe { mcl_transfer_set_arg(t_hdl, idx, array_slice.as_ptr() as *mut c_void, (array_slice.len() * size_of::<T>()) as u64, offset as i64, flags) };
         if err != 0 {
             panic!("Error {}. Could not set transfer argument", err);
         }
     }
 
     #[cfg(not(feature="versal"))]
-    pub(crate) fn transfer_set_local(t_hdl: *mut mcl_transfer, idx: u64, size: usize, flags: u64) {
+    pub(crate) fn transfer_set_local(t_hdl: *mut mcl_transfer, idx: u64, size: usize, offset: isize, flags: u64) {
 
-        let err = unsafe { mcl_transfer_set_arg(t_hdl, idx, null_mut(), size as u64, flags) };
+        let err = unsafe { mcl_transfer_set_arg(t_hdl, idx, null_mut(), size as u64, offset as i64, flags) };
         if err != 0 {
             panic!("Error {}. Could not set transfer argument", err);
         }
@@ -1716,10 +1783,7 @@ mod low_level {
             crate::DevType::CPU => MCL_TASK_CPU,
             crate::DevType::GPU => MCL_TASK_GPU,
             crate::DevType::FPGA => MCL_TASK_FPGA,
-            #[cfg(feature="versal")]
-            crate::DevType::NVDLA => MCL_TASK_NVDLA,
-            #[cfg(feature="versal")]
-            crate::DevType::SIMDEV => MCL_TASK_SIMDEV,
+            crate::DevType::DFT => MCL_TASK_DFT_FLAGS,
             crate::DevType::ANY => MCL_TASK_ANY,
         };
 

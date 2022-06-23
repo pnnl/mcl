@@ -1,4 +1,4 @@
-use mcl_rs::{DevType, TaskArg, TaskHandle}; //imports the module
+use mcl_rs::{DevType, TaskArg, TaskHandle, PrgFlag}; //imports the module
 use std::time::Instant;
 
 fn add_seq(x: &[i32], y: &[i32], z: &mut [i32]) {
@@ -8,10 +8,11 @@ fn add_seq(x: &[i32], y: &[i32], z: &mut [i32]) {
 }
 
 fn add_mcl(mcl: &mcl_rs::Mcl, x: &[i32], y: &[i32], z: &mut [i32], reps: usize, sync: bool) {
+
     let size = z.len() as u64;
     let global_work_dims: [u64; 3] = [size as u64, 1, 1];
     let hdls = (0..reps).filter_map(|_| {
-        let hdl =mcl.task("src/vadd.cl", "VADD", 3)
+        let hdl =mcl.task( "VADD", 3)
             .arg(TaskArg::output_slice(z))
             .arg(TaskArg::input_slice(x))
             .arg(TaskArg::input_slice(y))
@@ -52,6 +53,8 @@ fn main() {
     }
     println!("seq time: {} z[0..10] = {:?} ",timer.elapsed().as_secs_f64(),&z[0..10]);
 
+
+    mcl.prog("src/vadd.cl").flags(PrgFlag::SRC).load();
     timer = Instant::now();
     add_mcl(&mcl, &x, &y, &mut z_mcl_sync,reps, true);
     println!("mcl sync time: {} z[0..10] = {:?} ",timer.elapsed().as_secs_f64(),&z[0..10]);

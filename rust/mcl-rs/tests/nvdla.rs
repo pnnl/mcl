@@ -111,7 +111,7 @@ fn nvdla() {
             let digit  = rng.gen_range(0..10);
             println!("input digit: {}", digit);
             mcl_rs::Task::from(model_path, "DLA_MNIST", 2)
-                .flags(mcl_rs::KernelFlag::BIN)
+                .flags(mcl_rs::PrgFlag::BIN)
                 .compile()
                 .arg(mcl_rs::TaskArg::input_slice(&vin[digit]))
                 .arg(mcl_rs::TaskArg::output_slice(&mut vout[i]))

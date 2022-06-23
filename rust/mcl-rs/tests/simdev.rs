@@ -26,7 +26,7 @@ fn simdev() {
     for i in 0..rep {
         hdls.push(
             mcl_rs::Task::from("", "kernel0", 4)
-                .flags(mcl_rs::KernelFlag::SIMDEV)
+                .flags(mcl_rs::PrgFlag::SIMDEV)
                 .compile()
                 .arg(mcl_rs::TaskArg::input_slice(&a))
                 .arg(mcl_rs::TaskArg::input_slice(&b))
