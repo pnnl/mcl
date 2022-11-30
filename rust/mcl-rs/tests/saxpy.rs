@@ -28,10 +28,10 @@ fn saxpy_mcl(env: &mcl_rs::Mcl, a: &i32, x: &Vec::<i32>, y: &Vec::<i32>, z: &mut
                 .exec(pes) 
         );
 
-        // task_set_arg(&hdls[i], 0, &mut x[..], ArgType::BUFFER| ArgOpt::INPUT);
-        // task_set_arg(&hdls[i], 1, std::slice::from_mut(a), ArgType::SCALAR| ArgOpt::INPUT);
-        // task_set_arg(&hdls[i], 2, &mut y[..], ArgType::BUFFER| ArgOpt::INPUT);
-        // task_set_arg(&hdls[i], 3, &mut z[..], ArgType::BUFFER| ArgOpt::OUTPUT);
+        // task_set_arg(&hdls[i], 0, &mut x[..],ArgOpt::BUFFER| ArgOpt::Input);
+        // task_set_arg(&hdls[i], 1, std::slice::from_mut(a),ArgOpt::SCALAR| ArgOpt::Input);
+        // task_set_arg(&hdls[i], 2, &mut y[..],ArgOpt::BUFFER| ArgOpt::Input);
+        // task_set_arg(&hdls[i], 3, &mut z[..],ArgOpt::BUFFER| ArgOpt::OUTPUT);
         // exec(&hdls[i], &mut pes, &mut les, DevType::GPU);
         
         if *sync {

@@ -1,4 +1,4 @@
-use mcl_rs::{DevType, TaskArg, TaskHandle, PrgFlag}; //imports the module
+use mcl_rs::{DevType, TaskArg, TaskHandle, PrgType}; //imports the module
 use std::time::Instant;
 
 fn add_seq(x: &[i32], y: &[i32], z: &mut [i32]) {
@@ -54,7 +54,7 @@ fn main() {
     println!("seq time: {} z[0..10] = {:?} ",timer.elapsed().as_secs_f64(),&z[0..10]);
 
 
-    mcl.prog("src/vadd.cl").flags(PrgFlag::SRC).load();
+    mcl.create_prog("src/vadd.cl",PrgType::Src).load();
     timer = Instant::now();
     add_mcl(&mcl, &x, &y, &mut z_mcl_sync,reps, true);
     println!("mcl sync time: {} z[0..10] = {:?} ",timer.elapsed().as_secs_f64(),&z[0..10]);

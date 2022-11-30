@@ -31,10 +31,10 @@ fn gemm_mcl(env: &mcl_rs::Mcl, a: &Vec::<i32>, b: &Vec::<i32>, c: &mut Vec::<i32
         );
 
         // assert_eq!(mcl_task_set_kernel(hdls[i], kernel_path.into_raw(), kernel_name.into_raw(), 4, empty.into_raw(), 0),0);
-        // task_set_arg(&hdls[i], 0, &mut a[..], ArgType::BUFFER| ArgOpt::INPUT);
-        // task_set_arg(&hdls[i], 1, &mut b[..], ArgType::BUFFER| ArgOpt::INPUT);
-        // task_set_arg(&hdls[i], 2, std::slice::from_mut(n), ArgType::SCALAR| ArgOpt::INPUT);
-        // task_set_arg(&hdls[i], 3, &mut c[..], ArgType::BUFFER| ArgOpt::OUTPUT);
+        // task_set_arg(&hdls[i], 0, &mut a[..],ArgOpt::BUFFER| ArgOpt::Input);
+        // task_set_arg(&hdls[i], 1, &mut b[..],ArgOpt::BUFFER| ArgOpt::Input);
+        // task_set_arg(&hdls[i], 2, std::slice::from_mut(n),ArgOpt::SCALAR| ArgOpt::Input);
+        // task_set_arg(&hdls[i], 3, &mut c[..],ArgOpt::BUFFER| ArgOpt::OUTPUT);
         // exec(&hdls[i], &mut pes, &mut les, DevType::GPU);
         
         if *sync {

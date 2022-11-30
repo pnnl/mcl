@@ -25,9 +25,9 @@ fn add_mcl(env: &mcl_rs::Mcl, x: &Vec::<i32>, y: &Vec::<i32>, z: &mut Vec::<i32>
                 // .wait()
         );
 
-        // task_set_arg(&hdls[i], 0, &mut x[..], ArgType::BUFFER| ArgOpt::INPUT);
-        // task_set_arg(&hdls[i], 1, &mut y[..], ArgType::BUFFER| ArgOpt::INPUT);
-        // task_set_arg(&hdls[i], 2, &mut z[..], ArgType::BUFFER| ArgOpt::OUTPUT);
+        // task_set_arg(&hdls[i], 0, &mut x[..],ArgOpt::BUFFER| ArgOpt::Input);
+        // task_set_arg(&hdls[i], 1, &mut y[..],ArgOpt::BUFFER| ArgOpt::Input);
+        // task_set_arg(&hdls[i], 2, &mut z[..],ArgOpt::BUFFER| ArgOpt::OUTPUT);
         // exec(&hdls[i], &mut pes, &mut les, DevType::GPU);
         
         if *sync {
