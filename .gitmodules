@@ -2,4 +2,13 @@
 	path = src/common/nbhashmap
 	url = https://github.com/AK2000/nbhashmap.git
 	branch=master
-	
+[submodule "deps/uthash"]
+	path = deps/uthash
+	url = git@github.com:troydhanson/uthash.git
+[submodule "deps/libatomic_ops"]
+	path = deps/libatomic_ops
+	url = git@github.com:ivmai/libatomic_ops.git
+[submodule "rust/libmcl-sys/mcl"]
+	path = rust/libmcl-sys/mcl
+	url = git@github.com:pnnl/mcl.git
+	branch = rustdev

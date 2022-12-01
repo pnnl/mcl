@@ -55,6 +55,15 @@ fn main() {
         }
     }
 
+    if ocl_incpath.is_empty() || ocl_libpath.is_empty() {
+        if std::path::Path::new("/usr/lib64/libOpenCL.so").exists() {
+            ocl_libpath.push_str("/usr/lib64/");
+        }
+        if std::path::Path::new("/usr/include/CL").exists() {
+            ocl_incpath.push_str("/usr/include/");
+        }
+    }
+
     #[cfg(not(target_os="macos"))]
     if ocl_incpath.is_empty() || ocl_libpath.is_empty() {
         panic!("Build Error. Please set the paths to OpenCL: env variables OCL_PATH_INC and OCL_PATH_LIB.");
@@ -62,8 +71,24 @@ fn main() {
 
 
     // Find path to MCL library and include
-    let mcl_path = env::var("MCL_PATH")
-                   .expect("Build Error. MCL_PATH environmental variable is not set");
+    let mut mcl_path = match env::var("MCL_PATH") {
+        Ok(val) => val,
+        Err(_e) => "".to_string(),
+    };
+
+    if mcl_path.is_empty() {
+        let output = Command::new("which")
+        .arg("mcl_sched")
+        .output();
+        let out = String::from_utf8(output.unwrap().stdout).unwrap();
+
+        if !out.is_empty() {
+            let mut split = out.split("bin");
+            mcl_path = split.next().expect("Could not detect MCL libraries").to_owned();
+        }
+    }
+    
+    assert!(!mcl_path.is_empty(),"Build Error. MCL_PATH environmental variable is not set");
 
     // Rebuild if include file has changed
     println!("cargo:rerun-if-changed={}/include/minos.h", mcl_path);
