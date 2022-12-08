@@ -16,6 +16,8 @@ rand = "0.8.3"
 
 [build-dependencies]
 bindgen = "0.59.2"
+autotools = "0.2.5"
+cc = "1.0.77"
 
 [features]
 docs-rs = []
