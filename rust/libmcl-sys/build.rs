@@ -83,46 +83,36 @@ fn main() {
     };
 
     if mcl_path.is_empty() {
-        let output = Command::new("which")
-        .arg("mcl_sched")
-        .output();
-        let out = String::from_utf8(output.unwrap().stdout).unwrap();
+        let mcl_dest=out_path.clone().join("mcl_src");
+        Command::new("cp").args(&["-r", "mcl", &mcl_dest.to_string_lossy()])
+        .status().unwrap();
 
-        if !out.is_empty() {
-            let mut split = out.split("bin");
-            mcl_path = split.next().expect("Could not detect MCL libraries").to_owned();
-        }
-        if mcl_path.is_empty(){
-            let mcl_dest=out_path.clone().join("mcl_src");
-            Command::new("cp").args(&["-r", "mcl", &mcl_dest.to_string_lossy()])
-            .status().unwrap();
+        //build deps
+        let libatomic_ops = mcl_dest.clone().join("deps/libatomic_ops");
+        let libatomic_build = autotools::Config::new( libatomic_ops)
+        .reconf("-ivfWnone")
+        .build();
+        println!("libatomic_build {libatomic_build:?}");
+        let libatomic_inc = libatomic_build.clone().join("include");
+        let libatomic_lib = libatomic_build.clone().join("include");
 
-            //build deps
-            let libatomic_ops = mcl_dest.clone().join("deps/libatomic_ops");
-            let libatomic_build = autotools::Config::new( libatomic_ops)
-            .reconf("-ivfWnone")
-            .build();
-            println!("libatomic_build {libatomic_build:?}");
-            let libatomic_inc = libatomic_build.clone().join("include");
-            let libatomic_lib = libatomic_build.clone().join("include");
+        let uthash_inc =  mcl_dest.clone().join("deps/uthash/include");
 
-            let uthash_inc =  mcl_dest.clone().join("deps/uthash/include");
+        // let nbhash = mcl_dest.clone().join("src/common/nbhashmap");
+        // let _nbhash_build = cc::Build::new()
+        // .file(nbhash.join("nbhashmap.c"))
+        // .include(libatomic_inc.clone())
+        // .flag("-std=c11")
+        // .compile("nbhashmap.o");
 
-            // let nbhash = mcl_dest.clone().join("src/common/nbhashmap");
-            // let _nbhash_build = cc::Build::new()
-            // .file(nbhash.join("nbhashmap.c"))
-            // .include(libatomic_inc.clone())
-            // .flag("-std=c11")
-            // .compile("nbhashmap.o");
-
-            let mcl_build = autotools::Config::new( mcl_dest)
-            .reconf("-ivfWnone")
-            .cflag(format!("-I{} -I{}",uthash_inc.display(),libatomic_inc.display()))
-            .ldflag(format!("-L{}",libatomic_lib.display()))
-            .insource(true)
-            .build();
-            mcl_path = mcl_build.to_string_lossy().to_string();
-        }
+        let mcl_build = autotools::Config::new( mcl_dest)
+        .reconf("-ivfWnone")
+        .cflag(format!("-I{} -I{}",uthash_inc.display(),libatomic_inc.display()))
+        .ldflag(format!("-L{}",libatomic_lib.display()))
+        .insource(true)
+        .build();
+        mcl_path = mcl_build.to_string_lossy().to_string();
+    
     }
     
     assert!(!mcl_path.is_empty(),"Build Error. MCL_PATH environmental variable is not set");
