@@ -235,7 +235,8 @@ The test directory also contains OpenCL version of the tests for reference and p
 ## Rust Bindings
 We offer two Rust crates providing bindings for MCL, the source for both crates is hosted in the [rust](https://github.com/pnnl/mcl/tree/master/rust) folder of this repository. Both crates are also available on crates.io
 * [libmcl-sys](https://github.com/pnnl/mcl/tree/master/rust/libmcl-sys) -- (https://crates.io/crates/libmcl-sys): high-level bindings through an "unsafe" interface
-* [mcl-rs](https://github.com/pnnl/mcl/tree/master/rust/mcl-rs) -- (https://crates.io/crates/mcl-rs):high-level bindings providing a "safe" interface
+* [mcl-rs](https://github.com/pnnl/mcl/tree/master/rust/mcl-rs) -- (https://crates.io/crates/mcl-rs): high-level bindings providing a "safe" interface
+* [mcl-rs](https://github.com/pnnl/mcl/tree/master/rust/mcl-sched) -- (https://crates.io/crates/mcl-sched): convenience wrapper for installing the mcl scheduler via cargo
 
 ### Using Custom POCL Extensions
 As mentioned above, POCL is an open source implementation of OpenCL for CPUs and some GPUs. Any POCL version which supports OpenCL 1/2 should be inter-operable with MCL. However, we also use the open source nature of the POCL library to support extensions to the OpenCL interface which can be used by MCL. To get these extensions we provide a patch file for a specific POCL release. From the location of the mcl directory (so POCL will be installed as a sibling directory), run:

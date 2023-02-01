@@ -26,12 +26,26 @@ Once all dependencies have been taken care of, we can build mcl-rs.
 
 2. ```cargo build --release```
 
+## Installing MCL Scheduler
+The MCL scheduler can easily be installed via:
+```bash
+cargo install mcl_sched
+```
+
+Note, if you have manually built MCL from the C source code, you will already have the ```mcl_sched``` binary in the MCL install directory.
+You are free to use either your manually built mcl_sched or the one installed via cargo
+
 ## Testing
 mcl-rs comes with a set of unit tests that can be executed with:
 ```
 cargo test <test_name>
 ``` 
-**Note**: ```MCL``` scheduler needs to be running when the above command is executed.
+**Reminder**: The MCL scheduler should be running when executing the tests.
+if you installed mcl_sched via cargo then you should be able to invoke directly:
+```bash
+ mcl_sched
+```
+If you built mcl manually you may need to specify the path to the mcl_sched binary
 
 Removing the test-name would cause cargo to run all available tests, however, this could create issues since tests would run in parallel causing multiple threads to try to acquire access to the mcl_scheduler shmem object at the same time which might lead to failure.
 

@@ -281,7 +281,7 @@ dependencies = [
 
 [[package]]
 name = "libmcl-sys"
-version = "0.1.1"
+version = "0.1.2-rc"
 dependencies = [
  "autotools",
  "bindgen",
@@ -305,7 +305,7 @@ dependencies = [
 
 [[package]]
 name = "mcl_sched"
-version = "0.1.0"
+version = "0.1.0-rc"
 dependencies = [
  "clap 4.0.29",
  "libmcl-sys",

@@ -61,6 +61,8 @@ fn main() {
         }
     }
 
+    // println!("{}",std::path::Path::new("/usr/lib64/libOpenCL.so").exists());
+    // println!("{}",std::path::Path::new("/usr/include/CL").exists() );
     if ocl_incpath.is_empty() || ocl_libpath.is_empty() {
         if std::path::Path::new("/usr/lib64/libOpenCL.so").exists() {
             ocl_libpath.push_str("/usr/lib64/");
@@ -69,10 +71,12 @@ fn main() {
             ocl_incpath.push_str("/usr/include/");
         }
     }
+    println!("{:?}",ocl_libpath);
+    println!("{:?}",ocl_incpath);
 
     #[cfg(not(target_os="macos"))]
     if ocl_incpath.is_empty() || ocl_libpath.is_empty() {
-        panic!("Build Error. Please set the paths to OpenCL: env variables OCL_PATH_INC and OCL_PATH_LIB.");
+        panic!("Build Error. Please set the paths to OpenCL: env variables OCL_PATH_INC (current={}) and OCL_PATH_LIB (current={}).",ocl_incpath,ocl_libpath);
     }
 
 

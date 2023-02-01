@@ -6,10 +6,24 @@ This system crate provides Rust language bindings (via the use of Bindgen) for [
 - Cargo
 - Clang
 - OpenCL
-- MCL
+- MCL (either manually installed or via ```cargo install mcl_sched```)
 
-## How to build (Tested on Linux)
-1. Set the ```MCL_PATH``` environmental variable with the path to MCL installation directory. For example in bash use:
+## How to build (Tested on Linux) without previous build of MCL
+0. Set the ```OCL_PATH_INC``` and ```OCL_PATH_LIB``` environmental variables with the path to OpenCL ```include``` and ```lib``` (or ```lib64```) directories respectively. 
+    Note: this may not be needed if OpenCL is in the system directories
+    
+1. install mcl_sched: 
+    ```bash
+    cargo install mcl_sched
+    ```
+
+2. Build using Cargo
+    ```bash
+    cargo build --release
+    ```
+
+## How to build (Tested on Linux) with manually built MCL
+1.  set the ```MCL_PATH``` environmental variable with the path to MCL installation directory. For example in bash use:
 
     ```bash
     export MCL_PATH=/path/to/mcl/install/
@@ -34,6 +48,11 @@ libmcl-sys comes with a set of unit tests that can be executed by running:
  cargo test --release
 ```
 **Reminder**: The MCL scheduler should be running when executing the tests.
+if you installed mcl_sched via cargo then you should be able to invoke directly:
+```bash
+ mcl_sched
+```
+If you built mcl manually you may need to specify the path to the mcl_sched binary
 
 ## STATUS
 MCL (and libmcl-sys) is a research prototype and still under development, thus not all intended features are yet implemented.
