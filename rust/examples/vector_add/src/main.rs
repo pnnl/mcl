@@ -54,7 +54,7 @@ fn main() {
     println!("seq time: {} z[0..10] = {:?} ",timer.elapsed().as_secs_f64(),&z[0..10]);
 
 
-    mcl.create_prog("src/vadd.cl",PrgType::Src).load();
+    mcl.load_prog("src/vadd.cl",PrgType::Src);
     timer = Instant::now();
     add_mcl(&mcl, &x, &y, &mut z_mcl_sync,reps, true);
     println!("mcl sync time: {} z[0..10] = {:?} ",timer.elapsed().as_secs_f64(),&z[0..10]);

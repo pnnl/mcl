@@ -11,16 +11,17 @@ fn add_seq(x: &Vec::<i32>, y: &Vec::<i32>, z: &mut Vec::<i32>) {
 fn add_mcl(env: &mcl_rs::Mcl, x: &Vec::<i32>, y: &Vec::<i32>, z: &mut Vec::<i32>, reps: usize, sync: &bool) {
 
     let mut hdls : Vec::<mcl_rs::TaskHandle> = Vec::new();
+    env.load_prog("tests/vadd.cl", mcl_rs::PrgType::Src);
 
     for i in 0..reps {
         let size : u32 = z.len() as u32;
         let pes: [u64; 3] = [size as u64, 1, 1];
         hdls.push(
-            env.task("tests/vadd.cl", "VADD", 3)
+            env.task( "VADD", 3)
                 .arg(mcl_rs::TaskArg::output_slice(z))
                 .arg(mcl_rs::TaskArg::input_slice(x))
                 .arg(mcl_rs::TaskArg::input_slice(y))
-                .dev(mcl_rs::DevType::CPU)
+                .dev(mcl_rs::DevType::ANY)
                 .exec(pes)
                 // .wait()
         );

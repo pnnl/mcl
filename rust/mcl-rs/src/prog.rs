@@ -49,11 +49,6 @@ impl Prog{
     /// * `prog_path` - The path to the file where the kernel resides
     /// 
     /// Returns a new Prog that can be compiled
-    /// 
-    /// # Example
-    /// 
-    ///     let p = Prog::from("my_path");
-    /// 
     pub(crate) fn from(prog_path: &str, prog_type: PrgType) -> Self {
         Prog{
             prog_path: prog_path.to_string(),
@@ -84,20 +79,13 @@ impl Prog{
     /// 
     /// Returns a new CompiledTask
     /// 
-    ///     
-    /// # Example
-    /// 
-    ///     let compiled_t =Prog::from("my_path")
-    ///                 .compile_with_args("-D MYDEF");
-    /// 
     /// # Example
     ///``` 
     /// use mcl_rs::{MclEnvBuilder,PrgType};
     ///
     /// let mcl = MclEnvBuilder::new().num_workers(10).initialize();
     /// let prog = mcl.create_prog("my_path",PrgType::Src);
-    /// prog.with_compile_args("-D MYDEF");
-    /// prog.load();
+    /// prog.with_compile_args("-D MYDEF").load();
     ///
     /// // alternatively it is common to create/load a prog in one line
     ///  mcl.create_prog("my_path2",PrgType::Src)

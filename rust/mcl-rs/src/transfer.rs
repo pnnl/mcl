@@ -16,31 +16,39 @@ impl TransferHandle {
 
     /// Wait for the transfer associated with the handle to complete
     /// 
-    /// # Example
-    ///     
+    /// # Examples
+    ///```no_run     
+    ///     let mcl = mcl_rs::MclEnvBuilder::new().initialize();
+    ///     mcl.load_prog("my_prog",mcl_rs::PrgType::Src);
+    ///
     ///     let data = vec![0; 4];
     ///
-    ///     let t_hdl = Transfer::new(1, 1, 0)
-    ///                 .arg(TaskArg::input_slice(&data))
-    ///                 .dev(DevType::CPU)
+    ///     let t_hdl = mcl.transfer(1, 1)
+    ///                 .arg(mcl_rs::TaskArg::input_slice(&data))
+    ///                 .dev(mcl_rs::DevType::CPU)
     ///                 .exec();
     ///     t_hdl.wait();
+    ///```
     pub fn wait(&self) {
         low_level::transfer_wait(self.c_handle);
     }
 
     /// Check the status of the transfer associated with the handle
     /// 
-    /// # Example
-    ///     
+    /// # Examples
+    ///```no_run     
+    ///     let mcl = mcl_rs::MclEnvBuilder::new().initialize();
+    ///     mcl.load_prog("my_prog",mcl_rs::PrgType::Src);
+    ///
     ///     let data = vec![0; 4];
     ///
-    ///     let t_hdl = Transfer::new(1, 1, 0)
-    ///                 .arg(TaskArg::input_slice(&data))
-    ///                 .dev(DevType::CPU)
+    ///     let t_hdl = mcl.transfer(1, 1)
+    ///                 .arg(mcl_rs::TaskArg::input_slice(&data))
+    ///                 .dev(mcl_rs::DevType::CPU)
     ///                 .exec();
     /// 
     ///     let t_hdl_status = t_hdl.test(); 
+    ///```
     pub fn test(&self) {
         low_level::transfer_test(self.c_handle);
     }
@@ -75,15 +83,11 @@ impl Transfer {
     /// * `flags` - Other related flags
     /// 
     /// Returns a new  Transfer object
-    /// 
-    /// # Example
-    ///     let tr = Transfer::new(1, 1, 0);
-    ///
-    pub fn new(num_args: usize, ncopies: usize, flags: u64) -> Self {
+    pub(crate) fn new(num_args: usize, ncopies: usize, flags: u64) -> Self {
         Transfer {
             //num_args: num_args,
             curr_arg: 0,
-            d_type: DevType::GPU,
+            d_type: DevType::ANY,
             hdl: TransferHandle{ c_handle: low_level::transfer_create(num_args as u64, ncopies as u64, flags), },
         }
     }
@@ -92,17 +96,20 @@ impl Transfer {
     /// Adds an argument to be transferred by this request
     /// 
     /// ## Arguments
-    /// * ` arg` - The argument to be transferred enclosed in a TaskArg
+    /// * ` arg` - The argument to be transferred enclosed in a mcl_rs::TaskArg
     /// 
     /// Returns the Transfer object
     /// 
-    /// # Example
+    /// # Examples
+    ///```no_run     
+    ///     let mcl = mcl_rs::MclEnvBuilder::new().initialize();
+    ///     mcl.load_prog("my_prog",mcl_rs::PrgType::Src);
     ///     
     ///     let data = vec![0; 4];
     ///
-    ///     let tr = Transfer::new(1, 1, 0)
-    ///                 .arg(TaskArg::input_slice(&data));
-    ///
+    ///     let tr = mcl.transfer(1, 1)
+    ///                 .arg(mcl_rs::TaskArg::input_slice(&data));
+    ///```
     pub fn arg<T>(mut self, arg: TaskArg<T>) -> Self {
             
         match arg.data {
@@ -124,14 +131,17 @@ impl Transfer {
     /// 
     /// Returns the Transfer with the preference set
     /// 
-    /// # Example
-    ///     
+    /// # Examples
+    ///```no_run     
+    ///     let mcl = mcl_rs::MclEnvBuilder::new().initialize();
+    ///     mcl.load_prog("my_prog",mcl_rs::PrgType::Src);
+    ///
     ///     let data = vec![0; 4];
     ///
-    ///     let tr = Transfer::new(1, 1, 0)
-    ///                 .arg(TaskArg::input_slice(&data))
-    ///                 .dev(DevType::CPU);
-    /// 
+    ///     let tr = mcl.transfer(1, 1)
+    ///                 .arg(mcl_rs::TaskArg::input_slice(&data))
+    ///                 .dev(mcl_rs::DevType::CPU);
+    ///``` 
     pub fn dev(mut self, d_type: DevType) -> Self {
         
         self.d_type = d_type;
@@ -142,15 +152,19 @@ impl Transfer {
     /// 
     /// Returns a TransferHandle that can be queried for completion
     /// 
-    /// # Example
-    ///     
+    /// # Examples
+    ///```no_run     
+    ///     let mcl = mcl_rs::MclEnvBuilder::new().initialize();
+    ///     mcl.load_prog("my_prog",mcl_rs::PrgType::Src);
+    ///
     ///     let data = vec![0; 4];
     ///
-    ///     let t_hdl = Transfer::new(1, 1, 0)
-    ///                 .arg(TaskArg::input_slice(&data))
-    ///                 .dev(DevType::CPU)
+    ///     let t_hdl = mcl.transfer(1, 1)
+    ///                 .arg(mcl_rs::TaskArg::input_slice(&data))
+    ///                 .dev(mcl_rs::DevType::CPU)
     ///                 .exec();
     ///     t_hdl.wait();
+    ///```
     pub fn exec(self) -> TransferHandle {
 
         low_level::transfer_exec(self.hdl.c_handle, self.d_type);

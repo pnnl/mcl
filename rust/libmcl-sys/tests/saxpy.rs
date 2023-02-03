@@ -24,6 +24,7 @@ fn saxpy_mcl(a: &mut i32, x: &mut Vec::<i32>, y: &mut Vec::<i32>, z: &mut Vec::<
             let kernel_name = CString::new("SAXPY").unwrap();
             
             let empty = CString::new("").unwrap();
+            mcl_prg_load( kernel_path.into_raw(), empty.into_raw(),MCL_PRG_SRC.into());
             hdls.push(mcl_task_create());
 
             // Get a raw void ptr to our data to pass it to mcl C inteface
@@ -34,7 +35,7 @@ fn saxpy_mcl(a: &mut i32, x: &mut Vec::<i32>, y: &mut Vec::<i32>, z: &mut Vec::<
             let pes_ptr: *mut u64 = &mut pes as *mut _ as *mut u64;
             let les_ptr: *mut u64 = &mut les as *mut _ as *mut u64;
             
-            assert_eq!(mcl_task_set_kernel(hdls[i], kernel_path.into_raw(), kernel_name.into_raw(), 4, empty.into_raw(), 0),0);
+            assert_eq!(mcl_task_set_kernel(hdls[i], kernel_name.into_raw(), 4),0);
             assert_eq!(mcl_task_set_arg(hdls[i], 0, x_ptr, size * size_of::<i32>() as u64, (MCL_ARG_BUFFER| MCL_ARG_INPUT).into()), 0);
             assert_eq!(mcl_task_set_arg(hdls[i], 1, a_ptr, size_of::<i32>() as u64, (MCL_ARG_SCALAR| MCL_ARG_INPUT).into()), 0);
             assert_eq!(mcl_task_set_arg(hdls[i], 2, y_ptr, size * size_of::<i32>() as u64, (MCL_ARG_BUFFER| MCL_ARG_INPUT).into()), 0);

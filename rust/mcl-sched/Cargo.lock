@@ -282,6 +282,8 @@ dependencies = [
 [[package]]
 name = "libmcl-sys"
 version = "0.1.2-rc"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "650874ed8c7d4b3a6e3e89c6be7cc90e02aff77d88f84c481e6aafd2fc81c642"
 dependencies = [
  "autotools",
  "bindgen",

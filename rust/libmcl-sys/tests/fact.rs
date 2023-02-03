@@ -27,8 +27,11 @@ fn fact_mcl(v_in: &mut Vec::<u64>, v_out: &mut Vec::<u64>, reps: usize, sync: &b
             let mut les: [u64; 3] = [1; 3];
             let kernel_path = CString::new("tests/fact.cl").unwrap();
             let kernel_name = CString::new("FACT").unwrap();
-            
+
             let empty = CString::new("").unwrap();
+            mcl_prg_load( kernel_path.into_raw(), empty.into_raw(),MCL_PRG_SRC.into());
+            
+           
             hdls.push(mcl_task_create());
 
             // Get a raw void ptr to our data to pass it to mcl C inteface
@@ -37,7 +40,7 @@ fn fact_mcl(v_in: &mut Vec::<u64>, v_out: &mut Vec::<u64>, reps: usize, sync: &b
             let pes_ptr: *mut u64 = &mut pes as *mut _ as *mut u64;
             let les_ptr: *mut u64 = &mut les as *mut _ as *mut u64;
             
-            assert_eq!(mcl_task_set_kernel(hdls[i], kernel_path.into_raw(), kernel_name.into_raw(), 2, empty.into_raw(), 0),0);
+            assert_eq!(mcl_task_set_kernel(hdls[i], kernel_name.into_raw(), 2),0);
             assert_eq!(mcl_task_set_arg(hdls[i], 0, v_in_ptr.offset((i * size_of::<u64>()).try_into().unwrap()), size_of::<u64>() as u64, (MCL_ARG_BUFFER| MCL_ARG_INPUT).into()), 0);
             assert_eq!(mcl_task_set_arg(hdls[i], 1, v_out_ptr.offset((i * size_of::<u64>()).try_into().unwrap()), size_of::<u64>() as u64, (MCL_ARG_BUFFER| MCL_ARG_OUTPUT).into()), 0);
             assert_eq!(mcl_exec(hdls[i], pes_ptr, les_ptr, MCL_TASK_GPU.into()),0);

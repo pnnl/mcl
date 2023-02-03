@@ -20,6 +20,7 @@ autotools = "0.2.5"
 cc = "1.0.77"
 
 [features]
+shared_mem = []
 docs-rs = []
 
 [package.metadata.docs.rs]

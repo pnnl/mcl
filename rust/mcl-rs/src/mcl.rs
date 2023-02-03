@@ -3,6 +3,7 @@ use crate::low_level;
 // use crate::device::DevInfo;
 use crate::prog::{Prog,PrgType};
 use crate::task::{InnerTask,Task};
+use crate::transfer::{Transfer};
 
 use bitflags::bitflags;
 
@@ -14,7 +15,7 @@ bitflags! {
 }
 
 /// This structure is used to setup the MCL environment with the given parameters
-/// # Example
+/// # Examples
 ///``` 
 /// use mcl_rs::MclEnvBuilder;
 /// 
@@ -33,7 +34,7 @@ impl MclEnvBuilder {
 
     /// Creates and returns a new MclEnvBuilder with the default values
     /// 
-    /// # Example
+    /// # Examples
     ///``` 
     /// use mcl_rs::MclEnvBuilder;
     /// 
@@ -56,7 +57,7 @@ impl MclEnvBuilder {
     /// 
     /// Returns the MclEnvBuilder with the num_workers set
     /// 
-    /// # Example
+    /// # Examples
     ///``` 
     /// use mcl_rs::MclEnvBuilder;
     /// 
@@ -80,7 +81,7 @@ impl MclEnvBuilder {
     /// 
     /// Returns the MclEnvBuilder with the num_workers set
     /// 
-    /// # Example
+    /// # Examples
     ///``` 
     /// use mcl_rs::MclEnvBuilder;
     /// 
@@ -100,7 +101,7 @@ impl MclEnvBuilder {
     /// 
     /// Returns an [Mcl] instance
     ///  
-    /// # Example
+    /// # Examples
     ///``` 
     /// use mcl_rs::MclEnvBuilder;
     /// 
@@ -150,7 +151,7 @@ impl Mcl{
     /// 
     /// Returns a new [Prog][crate::prog::Prog] that can be loaded into the current mcl environment
     /// 
-    /// # Example
+    /// # Examples
     ///```no_run
     /// use mcl_rs::{MclEnvBuilder,PrgType};
     ///
@@ -161,25 +162,67 @@ impl Mcl{
         Prog::from( prog_path,prog_type)
     }
 
+    /// Creates and loads a new mcl prog from the given source file pointed to by `prog_path` and the specified Program Type [crate::prog::PrgType].
+    /// 
+    /// This is a convenience function for when no additional arguments need to be supplied with program/kernel during compile time
+    /// 
+    /// # Examples
+    ///```no_run
+    /// use mcl_rs::{MclEnvBuilder,PrgType};
+    ///
+    /// let mcl = MclEnvBuilder::new().num_workers(10).initialize();
+    /// mcl.load_prog("my_path",PrgType::Src);
+    ///```
+    pub fn load_prog(&self, prog_path: &str,prog_type: PrgType) {
+        Prog::from( prog_path,prog_type).load()
+    }
+
 
     /// Creates a new mcl task from the given kernel.
     ///
     /// This kernel must exist in a previously loaded [Prog][crate::prog::Prog].
     /// 
     /// Returns a new Task representing this kernel
-    /// # Example
-    /// 
-    ///     let t = Task::from("my_kernel", 2);
+    /// # Examples
     /// 
     ///```no_run
     ///     let mcl = mcl_rs::MclEnvBuilder::new().num_workers(10).initialize();
-    ///     mcl.prog("my_path", "my_comperter_args", PrgFlag::Src);
+    ///     mcl.load_prog("my_path", mcl_rs::PrgType::Src);
     ///
     ///     let t = mcl.task("my_kernel", 2);
     ///```
     pub fn task(&self, kernel_name_cl: &str, nargs: usize) -> Task{
         InnerTask::from( kernel_name_cl, nargs).compile()
     }
+
+    /// Creates a new mcl transfer task with that will transfer `nargs` and suggest to the scheduler that `ncopies` should be created
+    /// # Examples
+    ///```no_run     
+    ///     let mcl = mcl_rs::MclEnvBuilder::new().initialize();
+    ///     mcl.load_prog("my_prog",mcl_rs::PrgType::Src);
+    ///
+    ///     let tr = mcl.transfer(1, 1);
+    ///```
+    pub fn transfer(&self,nargs: usize, ncopies: usize) -> Transfer{
+        Transfer::new(nargs,ncopies,0)
+    }
+
+    // /// Registers `buf` as an MCL buffer object for future use with MCL resident memory
+    // ///
+    // /// Use of this method allows exploitation of subbuffers using offsets. When MCL sees this buffer in a task
+    // /// It will know that it is a reference to this section of memory, and it will use the same device allocation,
+    // /// using only a portion of a large device buffer if necessary
+    // ///
+    // /// # Examples
+    // ///```no_run     
+    // ///     let mcl = mcl_rs::MclEnvBuilder::new().initialize();
+    // ///     let data = vec![0;100000];
+    // ///
+    // ///     let tr = mcl.buffer(&data);
+    // ///```
+    // pub fn buffer<T>(&self,nargs: usize, ncopies: usize) -> Buffer{
+    //     Transfer::new(nargs,ncopies,0)
+    // }
 
     /// Get the info of a specific device
     /// 
@@ -190,7 +233,6 @@ impl Mcl{
     /// Returns the info of specificed device
     ///```no_run
     ///     let mcl = mcl_rs::MclEnvBuilder::new().num_workers(10).initialize();
-    ///     let 
     ///
     ///     let t = mcl.task("my_kernel", 2);
     ///```
@@ -202,7 +244,7 @@ impl Mcl{
     /// 
     /// Returns the number of devices available
     ///```no_run
-    ///     let mcl = mcl_rs::MclEnvBuilder::new().num_workers(10).initialize();
+    ///     let mcl = mcl_rs::MclEnvBuilder::new().initialize();
     ///     let num_dev = mcl.get_ndev();
     ///```
     pub fn get_ndev(&self) -> u32 {
@@ -212,18 +254,18 @@ impl Mcl{
 
     /// Wait for all pending tasks to complete
     ///     
-    /// # Example
-    ///     
+    /// # Examples
+    ///```no_run 
+    ///     let mcl = mcl_rs::MclEnvBuilder::new().initialize();
+    ///     mcl.load_prog("my_prog",mcl_rs::PrgType::Src);  
+    /// 
     ///     let data = vec![0; 4];
-    ///     let les: [u64; 3] = vec![1, 1, 1];
-    ///     let pes: [u64; 3] = vec![1, 1, 1];
-    ///     let hdl = Task::from("my_path", "my_kernel", 1)
-    ///                 .compile()
-    ///                 .arg(TaskArg::input_slice(&data))
-    ///                 .write_only(true)
+    ///     let pes: [u64; 3] = [1, 1, 1];
+    ///     let hdl =  mcl.task("my_kernel", 1)
+    ///                 .arg(mcl_rs::TaskArg::input_slice(&data).write_only())      
     ///                 .exec(pes);
-    ///      wait_all();
-    ///
+    ///     mcl.wait_all();
+    ///```
     pub fn wait_all(&self) {
         low_level::wait_all()
         

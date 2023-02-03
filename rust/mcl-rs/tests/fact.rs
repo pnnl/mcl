@@ -16,15 +16,15 @@ fn fact_seq(v_in: &Vec::<u64>, v_out: &mut Vec::<u64>) {
 fn fact_mcl(env: &mcl_rs::Mcl, v_in: &Vec::<u64>, v_out: &mut Vec::<u64>, reps: usize, sync: &bool) {
 
     let mut hdls : Vec::<mcl_rs::TaskHandle> = Vec::new();
-
+    env.load_prog("tests/fact.cl", mcl_rs::PrgType::Src);
     for i in 0..reps {
 
         let pes: [u64; 3] = [1, 1, 1];
 
-        let hdl = env.task("tests/fact.cl", "FACT", 2)
+        let hdl = env.task( "FACT", 2)
             .arg(mcl_rs::TaskArg::input_slice(&v_in[i..i+1]))
             .arg(mcl_rs::TaskArg::output_slice(&mut v_out[i..i+1]))
-            .dev(mcl_rs::DevType::CPU)
+            .dev(mcl_rs::DevType::ANY)
             .exec(pes);
         hdls.push(hdl);
 

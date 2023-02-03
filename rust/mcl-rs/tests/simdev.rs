@@ -1,4 +1,4 @@
-use mcl_rs;
+
 #[cfg(feature="versal")]
 #[test]
 fn simdev() {
@@ -21,12 +21,13 @@ fn simdev() {
         }
     }
 
+    env.load_prog("",mcl_rs::PrgType::SIMDEV).load();
+
     let mut hdls : Vec::<mcl_rs::TaskHandle> = Vec::new();
     let pes : [u64; 3] = [1, 1, 1];
     for i in 0..rep {
         hdls.push(
-            mcl_rs::Task::from("", "kernel0", 4)
-                .flags(mcl_rs::PrgFlag::SIMDEV)
+            mcl_rs::Task::from("kernel0", 4)
                 .compile()
                 .arg(mcl_rs::TaskArg::input_slice(&a))
                 .arg(mcl_rs::TaskArg::input_slice(&b))

@@ -71,8 +71,6 @@ fn main() {
             ocl_incpath.push_str("/usr/include/");
         }
     }
-    println!("{:?}",ocl_libpath);
-    println!("{:?}",ocl_incpath);
 
     #[cfg(not(target_os="macos"))]
     if ocl_incpath.is_empty() || ocl_libpath.is_empty() {
@@ -88,34 +86,66 @@ fn main() {
 
     if mcl_path.is_empty() {
         let mcl_dest=out_path.clone().join("mcl_src");
-        Command::new("cp").args(&["-r", "mcl", &mcl_dest.to_string_lossy()])
-        .status().unwrap();
+        let shm_path = mcl_dest.clone().join("mcl_shared_mem_enabled");
+        
+        let  shm_changed = if cfg!(feature="shared_mem") {
+            !shm_path.exists() // shared_mem feature enabled but not previously compiled with it
+        }
+        else{ // shared_mem feature disabled
+            shm_path.exists() //check if previously compiled with shared_mem
+        };
+        // println!("cargo:warning= {} {}",shm_path.display(),shm_changed);
 
-        //build deps
-        let libatomic_ops = mcl_dest.clone().join("deps/libatomic_ops");
-        let libatomic_build = autotools::Config::new( libatomic_ops)
-        .reconf("-ivfWnone")
-        .build();
-        println!("libatomic_build {libatomic_build:?}");
-        let libatomic_inc = libatomic_build.clone().join("include");
-        let libatomic_lib = libatomic_build.clone().join("include");
+        if !mcl_dest.exists() || shm_changed {
+            if shm_path.exists(){
+                std::fs::remove_file(shm_path.clone()).unwrap();
+            }
+            
+            Command::new("cp").args(&["-r", "mcl", &mcl_dest.to_string_lossy()])
+            .status().unwrap();
 
-        let uthash_inc =  mcl_dest.clone().join("deps/uthash/include");
+            //build deps
+            let libatomic_ops = mcl_dest.clone().join("deps/libatomic_ops");
+            let libatomic_build = autotools::Config::new( libatomic_ops)
+            .reconf("-ivfWnone")
+            .build();
+            println!("libatomic_build {libatomic_build:?}");
+            let libatomic_inc = libatomic_build.clone().join("include");
+            let libatomic_lib = libatomic_build.clone().join("include");
 
-        // let nbhash = mcl_dest.clone().join("src/common/nbhashmap");
-        // let _nbhash_build = cc::Build::new()
-        // .file(nbhash.join("nbhashmap.c"))
-        // .include(libatomic_inc.clone())
-        // .flag("-std=c11")
-        // .compile("nbhashmap.o");
+            let uthash_inc =  mcl_dest.clone().join("deps/uthash/include");
 
-        let mcl_build = autotools::Config::new( mcl_dest)
-        .reconf("-ivfWnone")
-        .cflag(format!("-I{} -I{}",uthash_inc.display(),libatomic_inc.display()))
-        .ldflag(format!("-L{}",libatomic_lib.display()))
-        .insource(true)
-        .build();
-        mcl_path = mcl_build.to_string_lossy().to_string();
+            // let nbhash = mcl_dest.clone().join("src/common/nbhashmap");
+            // let _nbhash_build = cc::Build::new()
+            // .file(nbhash.join("nbhashmap.c"))
+            // .include(libatomic_inc.clone())
+            // .flag("-std=c11")
+            // .compile("nbhashmap.o");
+
+            
+            let shared_mem = if cfg!(feature="shared_mem") {
+                std::fs::File::create(shm_path).unwrap();
+                "--enable-shared-memory --enable-pocl-extensions"
+            }
+            else {
+                ""
+            };
+            
+
+
+            let mcl_build = autotools::Config::new( mcl_dest)
+            .reconf("-ivfWnone")
+            .cflag(format!("{} -I{} -I{}",shared_mem,uthash_inc.display(),libatomic_inc.display()))
+            .ldflag(format!("-L{}",libatomic_lib.display()))
+            .insource(true)
+            .build();
+            mcl_path = mcl_build.clone().to_string_lossy().to_string();
+            
+        }
+        else {
+            mcl_path = mcl_dest.to_string_lossy().to_string();
+        }
+        
     
     }
     
@@ -127,6 +157,10 @@ fn main() {
     println!("cargo:rerun-if-changed={}/include/mcl_sched.h", mcl_path);
     println!("cargo:rerun-if-changed={}/lib/libmcl.a", mcl_path);
     println!("cargo:rerun-if-changed={}/lib/mcl_sched.a", mcl_path);
+
+    println!("cargo:rerun-if-env-changed=MCL_PATH");
+    println!("cargo:rerun-if-env-changed=OCL_PATH_INC");
+    println!("cargo:rerun-if-env-changed=OCL_PATH_LIB");
 
     // The bindgen::Builder is the main entry point
     // to bindgen, and lets you build up options for

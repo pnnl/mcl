@@ -15,18 +15,21 @@ fn gemm_seq(a: &Vec::<i32>, b: &Vec::<i32>, c: &mut Vec::<i32>, n: usize) {
 fn gemm_mcl(env: &mcl_rs::Mcl, a: &Vec::<i32>, b: &Vec::<i32>, c: &mut Vec::<i32>, n: &usize, reps: usize, sync: &bool) {
 
     let mut hdls : Vec::<mcl_rs::TaskHandle> = Vec::new();
+    env.load_prog("tests/gemmN.cl", mcl_rs::PrgType::Src);
 
     for i in 0..reps {
 
         let pes: [u64; 3] = [*n as u64, *n as u64, 1];
+
+        
         
         hdls.push(
-            env.task("tests/gemmN.cl", "gemmN", 4)
+            env.task("gemmN", 4)
                 .arg(mcl_rs::TaskArg::input_slice(a))
                 .arg(mcl_rs::TaskArg::input_slice(b))
                 .arg(mcl_rs::TaskArg::input_scalar(n))
                 .arg(mcl_rs::TaskArg::output_slice(c))
-                .dev(mcl_rs::DevType::CPU)
+                .dev(mcl_rs::DevType::ANY)
                 .exec(pes)
         );
 

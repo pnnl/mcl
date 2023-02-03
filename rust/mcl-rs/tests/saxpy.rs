@@ -17,14 +17,16 @@ fn saxpy_mcl(env: &mcl_rs::Mcl, a: &i32, x: &Vec::<i32>, y: &Vec::<i32>, z: &mut
         let size : u64 = z.len() as u64;
         let pes: [u64; 3] = [size, 1, 1];
 
+        env.load_prog("tests/saxpy.cl",mcl_rs::PrgType::Src);
+
         // hdls.push(task_init("tests/saxpy.cl", "SAXPY", 4, "", 0));
         hdls.push(
-            env.task("tests/saxpy.cl", "SAXPY", 4)
+            env.task("SAXPY", 4)
                 .arg(mcl_rs::TaskArg::input_slice(x))
                 .arg(mcl_rs::TaskArg::input_scalar(a))
                 .arg(mcl_rs::TaskArg::input_slice(y))
                 .arg(mcl_rs::TaskArg::output_slice(z))
-                .dev(mcl_rs::DevType::CPU)
+                .dev(mcl_rs::DevType::ANY)
                 .exec(pes) 
         );
 

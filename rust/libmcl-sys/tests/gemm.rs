@@ -28,6 +28,7 @@ fn gemm_mcl(a: &mut Vec::<i32>, b: &mut Vec::<i32>, c: &mut Vec::<i32>, n: &mut 
             let kernel_name = CString::new("gemmN").unwrap();
             
             let empty = CString::new("").unwrap();
+            mcl_prg_load( kernel_path.into_raw(), empty.into_raw(),MCL_PRG_SRC.into());
             hdls.push(mcl_task_create());
 
             // Get a raw void ptr to our data to pass it to mcl C inteface
@@ -38,7 +39,7 @@ fn gemm_mcl(a: &mut Vec::<i32>, b: &mut Vec::<i32>, c: &mut Vec::<i32>, n: &mut 
             let pes_ptr: *mut u64 = &mut pes as *mut _ as *mut u64;
             let les_ptr: *mut u64 = &mut les as *mut _ as *mut u64;
             
-            assert_eq!(mcl_task_set_kernel(hdls[i], kernel_path.into_raw(), kernel_name.into_raw(), 4, empty.into_raw(), 0),0);
+            assert_eq!(mcl_task_set_kernel(hdls[i], kernel_name.into_raw(), 4),0);
             assert_eq!(mcl_task_set_arg(hdls[i], 0, a_ptr, size * size_of::<i32>() as u64, (MCL_ARG_BUFFER| MCL_ARG_INPUT).into()), 0);
             assert_eq!(mcl_task_set_arg(hdls[i], 1, b_ptr, size * size_of::<i32>() as u64, (MCL_ARG_BUFFER| MCL_ARG_INPUT).into()), 0);
             assert_eq!(mcl_task_set_arg(hdls[i], 2, n_ptr, size_of::<usize>() as u64, (MCL_ARG_SCALAR| MCL_ARG_INPUT).into()), 0);
