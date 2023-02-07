@@ -2,7 +2,7 @@ use crate::low_level;
 
 // use crate::device::DevInfo;
 use crate::prog::{Prog,PrgType};
-use crate::task::{InnerTask,Task};
+use crate::task::{Task};
 use crate::transfer::{Transfer};
 
 use bitflags::bitflags;
@@ -191,8 +191,8 @@ impl Mcl{
     ///
     ///     let t = mcl.task("my_kernel", 2);
     ///```
-    pub fn task(&self, kernel_name_cl: &str, nargs: usize) -> Task{
-        InnerTask::from( kernel_name_cl, nargs).compile()
+    pub fn task<'a>(&self, kernel_name_cl: &str, nargs: usize) -> Task<'a>{
+        Task::new( kernel_name_cl, nargs)
     }
 
     /// Creates a new mcl transfer task with that will transfer `nargs` and suggest to the scheduler that `ncopies` should be created

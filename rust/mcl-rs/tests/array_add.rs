@@ -8,40 +8,19 @@ fn add_seq(x: &Vec::<i32>, y: &Vec::<i32>, z: &mut Vec::<i32>) {
     }
 }
 
-fn add_mcl(env: &mcl_rs::Mcl, x: &Vec::<i32>, y: &Vec::<i32>, z: &mut Vec::<i32>, reps: usize, sync: &bool) {
+async fn add_mcl(env: &mcl_rs::Mcl, x: &Vec::<i32>, y: &Vec::<i32>, z: &mut Vec::<i32>) {
 
-    let mut hdls : Vec::<mcl_rs::TaskHandle> = Vec::new();
     env.load_prog("tests/vadd.cl", mcl_rs::PrgType::Src);
 
-    for i in 0..reps {
-        let size : u32 = z.len() as u32;
-        let pes: [u64; 3] = [size as u64, 1, 1];
-        hdls.push(
-            env.task( "VADD", 3)
-                .arg(mcl_rs::TaskArg::output_slice(z))
-                .arg(mcl_rs::TaskArg::input_slice(x))
-                .arg(mcl_rs::TaskArg::input_slice(y))
-                .dev(mcl_rs::DevType::ANY)
-                .exec(pes)
-                // .wait()
-        );
-
-        // task_set_arg(&hdls[i], 0, &mut x[..],ArgOpt::BUFFER| ArgOpt::Input);
-        // task_set_arg(&hdls[i], 1, &mut y[..],ArgOpt::BUFFER| ArgOpt::Input);
-        // task_set_arg(&hdls[i], 2, &mut z[..],ArgOpt::BUFFER| ArgOpt::OUTPUT);
-        // exec(&hdls[i], &mut pes, &mut les, DevType::GPU);
-        
-        if *sync {
-            hdls[i].wait();
-        }
-    }
-
-    if !*sync {
-        for i in 0..reps {
-            hdls[i].wait();
-        }
-    }
     
+    let size : u32 = z.len() as u32;
+    let pes: [u64; 3] = [size as u64, 1, 1];
+        env.task( "VADD", 3)
+            .arg(mcl_rs::TaskArg::output_slice(z))
+            .arg(mcl_rs::TaskArg::input_slice(x))
+            .arg(mcl_rs::TaskArg::input_slice(y))
+            .dev(mcl_rs::DevType::ANY)
+            .exec(pes).await;
 }
 
 #[test]
@@ -49,8 +28,7 @@ fn vadd() {
 
     let workers = 1;
     let vec_size = 128;
-    let reps = 4;
-    let sync = false;
+    
 
     // Initialize mcl. No need to bind return element, we only need it to drop when it should.
     let env = mcl_rs::MclEnvBuilder::new()
@@ -69,16 +47,7 @@ fn vadd() {
 
     add_seq(&x, &y, &mut z_seq);
 
-    println!("Async mcl add");
-    add_mcl(&env, &x, &y, &mut z, reps, &sync);
-    assert_eq!(z_seq, z);
-
-    let mut z = vec![0; vec_size];
-    let sync = true;
-
-
-
-    println!("Sync mcl add");
-    add_mcl(&env, &x, &y, &mut z, reps, &sync);
+    println!(" mcl add");
+    futures::executor::block_on(add_mcl(&env, &x, &y, &mut z));
     assert_eq!(z_seq, z);
 }

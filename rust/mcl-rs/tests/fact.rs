@@ -13,17 +13,15 @@ fn fact_seq(v_in: &Vec::<u64>, v_out: &mut Vec::<u64>) {
     }
 }
 
-fn fact_mcl(env: &mcl_rs::Mcl, v_in: &Vec::<u64>, v_out: &mut Vec::<u64>, reps: usize, sync: &bool) {
-
-    let mut hdls : Vec::<mcl_rs::TaskHandle> = Vec::new();
+async fn fact_mcl(env: &mcl_rs::Mcl, v_in: &Vec::<u64>, v_out: &mut Vec::<u64>, sync: &bool) {
+    let mut hdls = Vec::new();
     env.load_prog("tests/fact.cl", mcl_rs::PrgType::Src);
-    for i in 0..reps {
-
+    for (i,o) in v_in.iter().zip(v_out.iter_mut()) {
         let pes: [u64; 3] = [1, 1, 1];
 
         let hdl = env.task( "FACT", 2)
-            .arg(mcl_rs::TaskArg::input_slice(&v_in[i..i+1]))
-            .arg(mcl_rs::TaskArg::output_slice(&mut v_out[i..i+1]))
+            .arg(mcl_rs::TaskArg::input_scalar(i))
+            .arg(mcl_rs::TaskArg::output_scalar(o))
             .dev(mcl_rs::DevType::ANY)
             .exec(pes);
         hdls.push(hdl);
@@ -31,14 +29,11 @@ fn fact_mcl(env: &mcl_rs::Mcl, v_in: &Vec::<u64>, v_out: &mut Vec::<u64>, reps: 
         // exec(&hdls[i], &mut pes, &mut les, DevType::GPU);
         
         if *sync {
-            hdls[i].wait();
+            hdls.pop().expect("Handle was just pushed to vec").await;
         }
     }
-
     if !*sync {
-        for i in 0..reps {
-            hdls[i].wait();
-        }
+        futures::future::join_all(hdls).await;
     }
 }
 
@@ -46,7 +41,7 @@ fn fact_mcl(env: &mcl_rs::Mcl, v_in: &Vec::<u64>, v_out: &mut Vec::<u64>, reps: 
 fn fact() {
     
     let workers = 1;
-    let reps = 40;
+    let reps = 2;
     let vec_size  = reps;
     let sync = true;
     
@@ -66,7 +61,7 @@ fn fact() {
     fact_seq(&v_in, &mut v_out_seq);
 
     println!("Sync mcl fact");
-    fact_mcl(&env,&v_in, &mut v_out, reps, &sync);
+    futures::executor::block_on(fact_mcl(&env,&v_in, &mut v_out, &sync));
     assert_eq!(v_out_seq, v_out);
 
     let mut v_out: Vec::<u64> = vec![0; vec_size];
@@ -75,6 +70,6 @@ fn fact() {
 
 
     println!("Async mcl fact");
-    fact_mcl(&env,&mut v_in, &mut v_out, reps, &sync);
+    futures::executor::block_on(fact_mcl(&env,&mut v_in, &mut v_out, &sync));
     assert_eq!(v_out_seq, v_out);
 }

@@ -1,79 +1,21 @@
 use libmcl_sys::*;
 use crate::low_level;
 use crate::device::DevType;
-use crate::task::{TaskArg,TaskArgData};
+use crate::task::{TaskArg,TaskArgData,ReqStatus};
 
-#[cfg(not(feature="versal"))]
-/// An opaque struct that represents a submitted MCL tranfser request
-pub struct TransferHandle {
 
-   /// Pointer to the C transfer handle
-    c_handle: *mut mcl_transfer,
- }
 
-#[cfg(not(feature="versal"))]
-impl TransferHandle {
 
-    /// Wait for the transfer associated with the handle to complete
-    /// 
-    /// # Examples
-    ///```no_run     
-    ///     let mcl = mcl_rs::MclEnvBuilder::new().initialize();
-    ///     mcl.load_prog("my_prog",mcl_rs::PrgType::Src);
-    ///
-    ///     let data = vec![0; 4];
-    ///
-    ///     let t_hdl = mcl.transfer(1, 1)
-    ///                 .arg(mcl_rs::TaskArg::input_slice(&data))
-    ///                 .dev(mcl_rs::DevType::CPU)
-    ///                 .exec();
-    ///     t_hdl.wait();
-    ///```
-    pub fn wait(&self) {
-        low_level::transfer_wait(self.c_handle);
-    }
 
-    /// Check the status of the transfer associated with the handle
-    /// 
-    /// # Examples
-    ///```no_run     
-    ///     let mcl = mcl_rs::MclEnvBuilder::new().initialize();
-    ///     mcl.load_prog("my_prog",mcl_rs::PrgType::Src);
-    ///
-    ///     let data = vec![0; 4];
-    ///
-    ///     let t_hdl = mcl.transfer(1, 1)
-    ///                 .arg(mcl_rs::TaskArg::input_slice(&data))
-    ///                 .dev(mcl_rs::DevType::CPU)
-    ///                 .exec();
-    /// 
-    ///     let t_hdl_status = t_hdl.test(); 
-    ///```
-    pub fn test(&self) {
-        low_level::transfer_test(self.c_handle);
-    }
-}
-
-#[cfg(not(feature="versal"))]
-impl Drop for TransferHandle {
-    
-    fn drop(&mut self) {
-        low_level::transfer_free(self.c_handle);
-    }
-}
-
-#[cfg(not(feature="versal"))]
 /// Transfer can be used to create a request for data transfer from MCL.
-pub struct Transfer {
-
-    // num_args: usize,
+pub struct Transfer<'a> {
+    args: Vec<TaskArg<'a>>,
     curr_arg: usize,
     d_type: DevType,
-    hdl: TransferHandle,
+    c_handle: *mut mcl_transfer,
 }
 
-#[cfg(not(feature="versal"))]
-impl Transfer {
+impl<'a> Transfer<'a> {
     
     /// Creates a new transfer with the given parameters
     /// 
@@ -85,10 +27,10 @@ impl Transfer {
     /// Returns a new  Transfer object
     pub(crate) fn new(num_args: usize, ncopies: usize, flags: u64) -> Self {
         Transfer {
-            //num_args: num_args,
+            args: vec![Default::default();num_args],
             curr_arg: 0,
             d_type: DevType::ANY,
-            hdl: TransferHandle{ c_handle: low_level::transfer_create(num_args as u64, ncopies as u64, flags), },
+            c_handle: low_level::transfer_create(num_args as u64, ncopies as u64, flags),
         }
     }
 
@@ -110,13 +52,15 @@ impl Transfer {
     ///     let tr = mcl.transfer(1, 1)
     ///                 .arg(mcl_rs::TaskArg::input_slice(&data));
     ///```
-    pub fn arg<T>(mut self, arg: TaskArg<T>) -> Self {
+    pub fn arg(mut self, arg: TaskArg<'a>) -> Self {
             
-        match arg.data {
-            TaskArgData::Mutable(mut x) => low_level::transfer_set_arg_mut(self.hdl.c_handle, self.curr_arg as u64, &mut x, 0, arg.flags),
-            TaskArgData::Immutable(x) => low_level::transfer_set_arg(self.hdl.c_handle, self.curr_arg as u64, x, 0, arg.flags),
-            TaskArgData::NoData(x) => low_level::transfer_set_local(self.hdl.c_handle, self.curr_arg as u64, x, 0, arg.flags)
+        match &arg.data {
+            TaskArgData::Scalar(x) => low_level::transfer_set_arg(self.c_handle, self.curr_arg as u64, x, 0, arg.flags),
+            TaskArgData::Buffer(x) => low_level::transfer_set_arg(self.c_handle, self.curr_arg as u64, x, 0, arg.flags),
+            TaskArgData::Local(x) => low_level::transfer_set_local(self.c_handle, self.curr_arg as u64, *x, 0, arg.flags),
+            TaskArgData::Empty => panic!("cannot have an empty arg"),
         }
+        self.args[self.curr_arg]=arg;
         self.curr_arg += 1;
 
         self
@@ -163,13 +107,20 @@ impl Transfer {
     ///                 .arg(mcl_rs::TaskArg::input_slice(&data))
     ///                 .dev(mcl_rs::DevType::CPU)
     ///                 .exec();
-    ///     t_hdl.wait();
+    ///     futures::executor::block_on(t_hdl);
     ///```
-    pub fn exec(self) -> TransferHandle {
+    pub async fn exec(self) {
+        assert_eq!(self.curr_arg, self.args.len());
+        low_level::transfer_exec(self.c_handle, self.d_type);
 
-        low_level::transfer_exec(self.hdl.c_handle, self.d_type);
-
-        self.hdl
+        while low_level::transfer_test(self.c_handle) != ReqStatus::Completed {
+            async_std::task::yield_now().await;
+        } 
     }
+}
 
+impl Drop for Transfer<'_> {
+    fn drop(&mut self) {
+        low_level::transfer_free(self.c_handle);
+    }
 }

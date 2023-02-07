@@ -6,7 +6,7 @@ use std::ffi::{CString};
 
 
 
-#[derive(Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Copy, serde::Serialize, serde::Deserialize)]
 pub enum DevType {
     NONE,
     CPU,

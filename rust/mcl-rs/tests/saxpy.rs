@@ -8,18 +8,16 @@ fn saxpy_seq(a: &i32, x: &Vec::<i32>, y: &Vec::<i32>, z: &mut Vec::<i32>) {
     }
 }
 
-fn saxpy_mcl(env: &mcl_rs::Mcl, a: &i32, x: &Vec::<i32>, y: &Vec::<i32>, z: &mut Vec::<i32>, reps: usize, sync: &bool) {
+async fn saxpy_mcl(env: &mcl_rs::Mcl, a: &i32, x: &Vec::<i32>, y: &Vec::<i32>, zs: &mut Vec<Vec::<i32>>, sync: &bool) {
 
-    let mut hdls : Vec::<mcl_rs::TaskHandle> = Vec::new();
+    let mut hdls = Vec::new();
+    env.load_prog("tests/saxpy.cl",mcl_rs::PrgType::Src);
  
-    for i in 0..reps {
+    for z in zs.iter_mut(){
 
         let size : u64 = z.len() as u64;
         let pes: [u64; 3] = [size, 1, 1];
 
-        env.load_prog("tests/saxpy.cl",mcl_rs::PrgType::Src);
-
-        // hdls.push(task_init("tests/saxpy.cl", "SAXPY", 4, "", 0));
         hdls.push(
             env.task("SAXPY", 4)
                 .arg(mcl_rs::TaskArg::input_slice(x))
@@ -29,22 +27,14 @@ fn saxpy_mcl(env: &mcl_rs::Mcl, a: &i32, x: &Vec::<i32>, y: &Vec::<i32>, z: &mut
                 .dev(mcl_rs::DevType::ANY)
                 .exec(pes) 
         );
-
-        // task_set_arg(&hdls[i], 0, &mut x[..],ArgOpt::BUFFER| ArgOpt::Input);
-        // task_set_arg(&hdls[i], 1, std::slice::from_mut(a),ArgOpt::SCALAR| ArgOpt::Input);
-        // task_set_arg(&hdls[i], 2, &mut y[..],ArgOpt::BUFFER| ArgOpt::Input);
-        // task_set_arg(&hdls[i], 3, &mut z[..],ArgOpt::BUFFER| ArgOpt::OUTPUT);
-        // exec(&hdls[i], &mut pes, &mut les, DevType::GPU);
         
         if *sync {
-            hdls[i].wait();
+            hdls.pop().expect("Task just pushed to vec").await;
         }
     }
 
     if !*sync {
-        for i in 0..reps {
-            hdls[i].wait();
-        }
+        futures::future::join_all(hdls).await;
     }
 }
 
@@ -68,21 +58,25 @@ fn saxpy() {
     let y: Vec::<i32> = (0..vec_size).map(|_| {rng.gen_range(0..100)}).collect();
 
     // Allocate the z vectors that will hold the results.
-    let mut z: Vec::<i32> = vec![0; vec_size];
+    let mut zs: Vec<Vec::<i32>> = vec![vec![0; vec_size];reps];
     let mut z_seq: Vec::<i32> = vec![0; vec_size];
 
     saxpy_seq(&a, &x, &y, &mut z_seq);
 
     println!("Async mcl SAXPY");
-    saxpy_mcl(&env,&a, &x, &y, &mut z, reps, &sync);
-    assert_eq!(z_seq, z);
+    futures::executor::block_on(saxpy_mcl(&env,&a, &x, &y, &mut zs, &sync));
+    for z in zs {
+        assert_eq!(z_seq, z);
+    }
 
-    let mut z = vec![0; vec_size];
+    let mut zs: Vec<Vec::<i32>> = vec![vec![0; vec_size];reps];
     let sync = true;
 
 
 
     println!("Sync mcl SAXPY");
-    saxpy_mcl(&env, &a, &x, &y, &mut z, reps, &sync);
-    assert_eq!(z_seq, z);
+    futures::executor::block_on(saxpy_mcl(&env, &a, &x, &y, &mut zs, &sync));
+    for z in zs {
+        assert_eq!(z_seq, z);
+    }
 }
