@@ -12,7 +12,6 @@ async fn add_mcl(env: &mcl_rs::Mcl, x: &Vec::<i32>, y: &Vec::<i32>, z: &mut Vec:
 
     env.load_prog("tests/vadd.cl", mcl_rs::PrgType::Src);
 
-    
     let size : u32 = z.len() as u32;
     let pes: [u64; 3] = [size as u64, 1, 1];
         env.task( "VADD", 3)

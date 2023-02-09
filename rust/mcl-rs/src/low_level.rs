@@ -9,7 +9,7 @@ use std::mem::size_of;
 
 use crate::task::ArgOpt;
 use crate::prog::PrgType;
-use crate::MclData;
+
 
 /// Initializes MCL
 /// 
@@ -173,8 +173,9 @@ pub(crate) fn task_set_kernel(hdl: *mut mcl_handle, name: &str, num_args: u64 ) 
 /// `argid` - The index of the argument
 /// `array_slice` - The data to pass
 /// `flags` - Any of the MCL_ARG_* flags. Must include one of MCL_ARG_BUFFER or MCL_ARG_SCALAR
-pub(crate) fn task_set_arg(hdl: *mut mcl_handle, argid: u64, arg: impl MclData, flags: ArgOpt) {
-    let err = unsafe { mcl_task_set_arg(hdl, argid, arg.as_c_void(), arg.size(), flags.bits()) };
+pub(crate) fn task_set_arg(hdl: *mut mcl_handle, argid: u64, arg: &[u8], flags: ArgOpt) {
+    // println!("{argid} {:?} {} {flags:?} {:x}",arg.as_ptr(),arg.len(),flags.bits());
+    let err = unsafe { mcl_task_set_arg(hdl, argid, arg.as_ptr() as *mut c_void, arg.len() as u64, flags.bits()) };
     if err != 0 {
         panic!("Error {}. Could not set argument for TaskHandle", err);
     }
@@ -198,9 +199,9 @@ pub(crate) fn task_set_local(hdl: *mut mcl_handle, argid: u64, mem_size: usize, 
 /// `argid` - The index of the argument
 /// `array_slice` - The data to pass
 /// `flags` - Any of the MCL_ARG_* flags. Must include one of MCL_ARG_BUFFER or MCL_ARG_SCALAR
-pub(crate) fn task_set_arg_buffer(hdl: *mut mcl_handle, argid: u64, arg: impl MclData, offset: usize, flags: ArgOpt) {
+pub(crate) fn task_set_arg_buffer(hdl: *mut mcl_handle, argid: u64, arg: &[u8], offset: usize, flags: ArgOpt) {
     assert!(flags.contains(ArgOpt::BUFFER), "buffer was not specified using the buffer attribute.");
-    let err = unsafe { mcl_task_set_arg_buffer(hdl, argid, arg.as_c_void(), arg.size(), offset  as i64, flags.bits()) };
+    let err = unsafe { mcl_task_set_arg_buffer(hdl, argid, arg.as_ptr() as *mut c_void, arg.len() as u64, offset  as i64, flags.bits()) };
     if err != 0 {
         panic!("Error {}. Could not set argument for TaskHandle", err);
     }
@@ -216,8 +217,11 @@ pub(crate) fn task_set_arg_buffer(hdl: *mut mcl_handle, argid: u64, arg: impl Mc
 /// `pes` - An array of size MCL_DEV_DIMS containing the number of threads in each dimension
 /// `les` - An array of size MCL_DEV_DIMS contianing the local work dimensions
 /// `type` - Specify compute locations using DevType::* enum 
-pub(crate) fn exec(hdl: *mut mcl_handle, pes: &mut [u64; 3], les: &mut [u64; 3], t_type: crate::DevType) {
-    
+pub(crate) fn exec(hdl: *mut mcl_handle, pes: &mut [u64; 3], les: &mut Option<[u64; 3]>, t_type: crate::DevType) {
+    let les = match les{
+        Some(les) => les.as_mut_ptr() as *mut _ as *mut u64,
+        None => 0 as *mut u64,
+    };
     let flags =  match t_type {
         crate::DevType::NONE => MCL_TASK_NONE,
         crate::DevType::CPU => MCL_TASK_CPU,
@@ -226,7 +230,7 @@ pub(crate) fn exec(hdl: *mut mcl_handle, pes: &mut [u64; 3], les: &mut [u64; 3],
         crate::DevType::DFT => MCL_TASK_DFT_FLAGS,
         crate::DevType::ANY => MCL_TASK_ANY,
     };
-    let err = unsafe { mcl_exec(hdl, pes.as_mut_ptr() as *mut _ as *mut u64, les.as_mut_ptr() as *mut _ as *mut u64, flags.into()) };
+    let err = unsafe { mcl_exec(hdl, pes.as_mut_ptr() as *mut _ as *mut u64, les, flags.into()) };
     if err != 0 {
         panic!("Error {}. Could not execute task.", err);
     }
@@ -330,17 +334,17 @@ pub(crate) fn transfer_create(nargs: u64, ncopies: u64, flags: u64) -> *mut mcl_
 /// * `idx` - The index of the argument
 /// * `array_slice` - The data to pass
 /// * `flags` - Any of the MCL_ARG_* flags. Must include one of MCL_ARG_BUFFER or MCL_ARG_SCALAR
-pub(crate) fn transfer_set_arg_mut(t_hdl: *mut mcl_transfer , idx: u64, arg: impl MclData, offset: isize, flags: ArgOpt) {
+pub(crate) fn transfer_set_arg_mut(t_hdl: *mut mcl_transfer , idx: u64, arg: &[u8], offset: isize, flags: ArgOpt) {
 
-    let err = unsafe { mcl_transfer_set_arg(t_hdl, idx, arg.as_c_void(), arg.size(), offset as i64, flags.bits()) };
+    let err = unsafe { mcl_transfer_set_arg(t_hdl, idx,  arg.as_ptr() as *mut c_void, arg.len() as u64, offset as i64, flags.bits()) };
     if err != 0 {
         panic!("Error {}. Could not set transfer argument", err);
     }
 }
 
-pub(crate) fn transfer_set_arg(t_hdl: *mut mcl_transfer, idx: u64, arg: impl MclData, offset: isize, flags: ArgOpt) {
+pub(crate) fn transfer_set_arg(t_hdl: *mut mcl_transfer, idx: u64, arg: &[u8], offset: isize, flags: ArgOpt) {
 
-    let err = unsafe { mcl_transfer_set_arg(t_hdl, idx, arg.as_c_void(), arg.size(), offset as i64, flags.bits()) };
+    let err = unsafe { mcl_transfer_set_arg(t_hdl, idx,  arg.as_ptr() as *mut c_void, arg.len() as u64, offset as i64, flags.bits()) };
     if err != 0 {
         panic!("Error {}. Could not set transfer argument", err);
     }

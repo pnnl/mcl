@@ -20,7 +20,7 @@ async fn saxpy_mcl(env: &mcl_rs::Mcl, a: &i32, x: &Vec::<i32>, y: &Vec::<i32>, z
 
         hdls.push(
             env.task("SAXPY", 4)
-                .arg(mcl_rs::TaskArg::input_slice(x))
+                .arg(mcl_rs::TaskArg::input_slice(&x))
                 .arg(mcl_rs::TaskArg::input_scalar(a))
                 .arg(mcl_rs::TaskArg::input_slice(y))
                 .arg(mcl_rs::TaskArg::output_slice(z))

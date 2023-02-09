@@ -1,11 +1,8 @@
 use libmcl_sys::*;
 use crate::low_level;
 use crate::device::DevType;
-use crate::{MclScalarDataType,MclBufferDataType,MclMutScalarDataType,MclMutBufferDataType};
-use crate::MclData;
 
 use bitflags::bitflags;
-
 
 
 #[derive(Clone, PartialEq)]
@@ -46,7 +43,7 @@ unsafe impl Sync for Task<'_> {}
 pub struct Task<'a> {
     args: Vec<TaskArg<'a>>,
     curr_arg: usize,
-    les: [u64; 3],
+    les: Option<[u64; 3]>,
     dev: DevType,
     c_handle: *mut mcl_handle,
 }
@@ -57,7 +54,7 @@ impl <'a>  Task<'a> {
         let task = Task {
             args: vec![Default::default();nargs],
             curr_arg: 0,
-            les: [1; 3],
+            les: None,
             dev: DevType::ANY,
             c_handle: low_level::task_create(),
         };
@@ -119,12 +116,12 @@ impl <'a>  Task<'a> {
     ///``` 
     pub fn arg_buffer(mut self, arg: TaskArg<'a>) -> Self { //TODO fix the offset issue
             
-        match &arg.data {
-            TaskArgData::Scalar(_x) => panic!("Scalar inputs are not valid buffers"),
-            TaskArgData::Buffer(x) => low_level::task_set_arg_buffer(self.c_handle, self.curr_arg as u64, x, 0, arg.flags),
-            TaskArgData::Local(_x) => panic!("invalid Task Argument Type"),
-            TaskArgData::Empty => panic!("cannot have an empty arg"),
-        }
+        // match &arg.data {
+        //     TaskArgData::Scalar(_x) => panic!("Scalar inputs are not valid buffers"),
+        //     TaskArgData::Buffer(x) => low_level::task_set_arg_buffer(self.c_handle, self.curr_arg as u64, x, 0, arg.flags),
+        //     TaskArgData::Local(_x) => panic!("invalid Task Argument Type"),
+        //     TaskArgData::Empty => panic!("cannot have an empty arg"),
+        // }
         self.args[self.curr_arg]=arg;
         self.curr_arg += 1;
 
@@ -156,7 +153,7 @@ impl <'a>  Task<'a> {
     ///``` 
     pub fn lwsize(mut self, les: [u64; 3]) -> Self {
        
-        self.les = les;
+        self.les = Some(les);
 
         return self
     }
@@ -262,9 +259,9 @@ impl Drop for Task<'_>  {
 }
 
 #[derive(Clone)]
-pub enum TaskArgData<'a> {
-    Scalar(MclScalarDataType<'a>),
-    Buffer(MclBufferDataType<'a>),
+pub(crate) enum TaskArgData<'a> {
+    Scalar(&'a [u8]),
+    Buffer(&'a [u8]),
     Local(usize),
     Empty,
 }
@@ -285,6 +282,11 @@ impl <'a> Default for TaskArg<'a>{
             flags: ArgOpt::EMPTY,
         }
     }
+}
+
+fn to_u8_slice<T>(data: &[T]) -> &[u8] {
+    let num_bytes = std::mem::size_of::<T>() * data.len();
+    unsafe {std::slice::from_raw_parts(data.as_ptr() as *const u8, num_bytes)} //no alignment issues going from T to u8 as u8 aligns to everything
 }
 
 impl<'a> TaskArg<'a> {
@@ -310,10 +312,11 @@ impl<'a> TaskArg<'a> {
     ///                 .exec(pes);
     ///     futures::executor::block_on(mcl_future);
     ///``` 
-    pub fn input_slice<T: Into<MclBufferDataType<'a>>>(slice: T) -> Self {
+    // pub fn input_slice<T: Into<MclBufferDataType<'a>>>(slice: T) -> Self {
+    pub fn input_slice<T>(slice: &'a [T]) -> Self {
         
         TaskArg {
-            data: TaskArgData::Buffer(slice.into()),
+            data: TaskArgData::Buffer(to_u8_slice(slice)),
             flags: ArgOpt::INPUT | ArgOpt::BUFFER,
         }
     }
@@ -339,10 +342,10 @@ impl<'a> TaskArg<'a> {
     ///                 .exec(pes);
     ///     futures::executor::block_on(mcl_future);
     ///```  
-    pub fn input_scalar<T: Into<MclScalarDataType<'a>>>(scalar: T) -> Self {
-        
+    pub fn input_scalar<T>(scalar: &'a T) -> Self {
+        // let slice = std::
         TaskArg {
-            data: TaskArgData::Scalar(scalar.into()),
+            data: TaskArgData::Scalar(to_u8_slice(std::slice::from_ref(scalar))),
             flags: ArgOpt::INPUT|ArgOpt::SCALAR,
         }
     }
@@ -396,9 +399,9 @@ impl<'a> TaskArg<'a> {
     ///                 .exec(pes);
     ///     futures::executor::block_on(mcl_future);
     ///``` 
-    pub fn output_slice<T: Into<MclMutBufferDataType<'a>>>(slice: T) -> Self {
+    pub fn output_slice<T>(slice: &'a [T]) -> Self {
         TaskArg {
-            data: TaskArgData::Buffer( slice.into().inner),
+            data: TaskArgData::Buffer(to_u8_slice(slice)),
             flags: ArgOpt::OUTPUT |ArgOpt::BUFFER,
         }
     }
@@ -423,11 +426,11 @@ impl<'a> TaskArg<'a> {
     ///                 .exec(pes);
     ///     futures::executor::block_on(mcl_future);
     ///``` 
-    pub fn output_scalar<T: Into<MclMutScalarDataType<'a>>>(scalar: T) -> Self {
+    pub fn output_scalar<T>(scalar: &'a T) -> Self {
         
         //mcl expects all outputs to be buffers but we want a nice consistent interface here!
         TaskArg {
-            data: TaskArgData::Buffer(scalar.into().inner.into()),
+            data: TaskArgData::Buffer(to_u8_slice(std::slice::from_ref(scalar))),
             flags: ArgOpt::OUTPUT |ArgOpt::BUFFER, 
         }
     }
@@ -452,9 +455,9 @@ impl<'a> TaskArg<'a> {
     ///                 .exec(pes);
     ///     futures::executor::block_on(mcl_future);
     ///``` 
-    pub fn inout_slice<T: Into<MclMutBufferDataType<'a>>>(slice: T) -> Self {
+    pub fn inout_slice<T>(slice: &'a [T]) -> Self {
         TaskArg {
-            data: TaskArgData::Buffer(slice.into().inner),
+            data: TaskArgData::Buffer(to_u8_slice(slice)),
             flags: ArgOpt::OUTPUT | ArgOpt::INPUT | ArgOpt::BUFFER,
         }
     }
@@ -479,10 +482,10 @@ impl<'a> TaskArg<'a> {
     ///                 .exec(pes);
     ///     futures::executor::block_on(mcl_future);
     ///``` 
-    pub fn inout_scalar<T: Into<MclMutScalarDataType<'a>>>(scalar: T) -> Self {
+    pub fn inout_scalar<T>(scalar: &'a T) -> Self {
        
         TaskArg {
-            data: TaskArgData::Buffer(scalar.into().inner),
+            data: TaskArgData::Buffer(to_u8_slice(std::slice::from_ref(scalar))),
             flags: ArgOpt::OUTPUT | ArgOpt::INPUT | ArgOpt::BUFFER,
         }
     }

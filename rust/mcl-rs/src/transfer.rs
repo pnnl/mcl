@@ -54,12 +54,12 @@ impl<'a> Transfer<'a> {
     ///```
     pub fn arg(mut self, arg: TaskArg<'a>) -> Self {
             
-        match &arg.data {
-            TaskArgData::Scalar(x) => low_level::transfer_set_arg(self.c_handle, self.curr_arg as u64, x, 0, arg.flags),
-            TaskArgData::Buffer(x) => low_level::transfer_set_arg(self.c_handle, self.curr_arg as u64, x, 0, arg.flags),
-            TaskArgData::Local(x) => low_level::transfer_set_local(self.c_handle, self.curr_arg as u64, *x, 0, arg.flags),
-            TaskArgData::Empty => panic!("cannot have an empty arg"),
-        }
+        // match &arg.data {
+        //     TaskArgData::Scalar(x) => low_level::transfer_set_arg(self.c_handle, self.curr_arg as u64, x, 0, arg.flags),
+        //     TaskArgData::Buffer(x) => low_level::transfer_set_arg(self.c_handle, self.curr_arg as u64, x, 0, arg.flags),
+        //     TaskArgData::Local(x) => low_level::transfer_set_local(self.c_handle, self.curr_arg as u64, *x, 0, arg.flags),
+        //     TaskArgData::Empty => panic!("cannot have an empty arg"),
+        // }
         self.args[self.curr_arg]=arg;
         self.curr_arg += 1;
 
