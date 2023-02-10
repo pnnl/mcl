@@ -1,23 +1,23 @@
 #define _GNU_SOURCE
 #include <assert.h>
 #include <errno.h>
-#include <sys/types.h>
-#include <sys/stat.h>
 #include <fcntl.h>
-#include <unistd.h>
+#include <math.h>
+#include <pthread.h>
+#include <string.h>
 #include <sys/mman.h>
 #include <sys/socket.h>
+#include <sys/stat.h>
+#include <sys/types.h>
 #include <sys/un.h>
-#include <string.h>
-#include <pthread.h>
-#include <math.h>
+#include <unistd.h>
 
+#include <atomics.h>
 #include <minos.h>
 #include <minos_internal.h>
-#include <atomics.h>
 #include <stats.h>
-#include <utlist.h>
 #include <uthash.h>
+#include <utlist.h>
 
 mcl_desc_t mcl_desc;
 uint32_t curr_h = 0;
@@ -38,8 +38,7 @@ mcl_class_t *mcl_class = NULL;
 
 char *shared_mem_name = NULL;
 
-static inline int cli_msg_send(struct mcl_msg_struct *msg)
-{
+static inline int cli_msg_send(struct mcl_msg_struct *msg) {
     int ret;
 
     while (((ret = msg_send(msg, mcl_desc.sock_fd, &mcl_desc.saddr)) > 0))
@@ -48,40 +47,33 @@ static inline int cli_msg_send(struct mcl_msg_struct *msg)
     return ret;
 }
 
-static inline int cli_msg_recv(struct mcl_msg_struct *msg)
-{
+static inline int cli_msg_recv(struct mcl_msg_struct *msg) {
     struct sockaddr_un src;
 
     return msg_recv(msg, mcl_desc.sock_fd, &src);
 }
 
-static inline uint32_t get_rid(void)
-{
+static inline uint32_t get_rid(void) {
     return ainc(&curr_h);
 }
 
-uint32_t get_mem_id(void)
-{
+uint32_t get_mem_id(void) {
     return ainc(&curr_mem_id);
 }
 
-cl_command_queue __get_queue(uint64_t dev)
-{
+cl_command_queue __get_queue(uint64_t dev) {
     uint64_t q_idx = curr_q[dev];
     curr_q[dev] = (curr_q[dev] + 1) % res_getDev(dev)->nqueues;
     return res_getClQueue(dev, q_idx);
 }
 
-static inline mcl_handle *hdl_init(uint64_t cmd, uint32_t rid, uint64_t status, uint64_t flags)
-{
+static inline mcl_handle *hdl_init(uint64_t cmd, uint32_t rid, uint64_t status, uint64_t flags) {
     mcl_handle *h = NULL;
 
-    if (flags & MCL_HDL_SHARED)
-    {
+    if (flags & MCL_HDL_SHARED) {
         h = mcl_allocate_shared_hdl();
     }
-    else
-    {
+    else {
         h = (mcl_handle *)malloc(sizeof(mcl_handle));
     }
     if (!h)
@@ -102,30 +94,24 @@ static inline mcl_handle *hdl_init(uint64_t cmd, uint32_t rid, uint64_t status, 
  * @param size the size of the memory region
  * @return int
  */
-int __buffer_register(void *addr, size_t size, uint64_t flags)
-{
+int __buffer_register(void *addr, size_t size, uint64_t flags) {
     mcl_rdata *el;
     uint32_t id = get_mem_id();
-    if (!(el = rdata_add(addr, id, size, flags)))
-    {
+    if (!(el = rdata_add(addr, id, size, flags))) {
         return -1;
     }
     return 0;
 }
 
-uint64_t arg_flags_to_cl_flags(uint64_t arg_flags)
-{
+uint64_t arg_flags_to_cl_flags(uint64_t arg_flags) {
     uint64_t flags;
-    if (arg_flags & MCL_ARG_RDONLY)
-    {
+    if (arg_flags & MCL_ARG_RDONLY) {
         flags = CL_MEM_READ_ONLY;
     }
-    else if (arg_flags & MCL_ARG_WRONLY)
-    {
+    else if (arg_flags & MCL_ARG_WRONLY) {
         flags = CL_MEM_WRITE_ONLY;
     }
-    else
-    {
+    else {
         flags = CL_MEM_READ_WRITE;
     }
 
@@ -138,39 +124,33 @@ uint64_t arg_flags_to_cl_flags(uint64_t arg_flags)
  * @param addr base pointer of the memory region, address that was passed to buffer register
  * @return int 0 on success, TODO: error codes unimplemented
  */
-int __buffer_unregister(void *addr)
-{
+int __buffer_unregister(void *addr) {
     return rdata_del(rdata_get(addr, 0));
 }
 
-int __invalidate_buffer(void *addr)
-{
+int __invalidate_buffer(void *addr) {
     return rdata_invalidate_gpu_mem(rdata_get(addr, 0));
 }
 
-mcl_handle *__task_create(uint64_t flags)
-{
+mcl_handle *__task_create(uint64_t flags) {
     mcl_handle *hdl = NULL;
     mcl_task *tsk = NULL;
     mcl_request *req = NULL;
 
     hdl = hdl_init(MSG_CMD_NEX, 0, MCL_REQ_ALLOCATED, flags);
-    if (!hdl)
-    {
+    if (!hdl) {
         eprintf("Error allocating MCL handle.");
         goto err;
     }
 
     tsk = (mcl_task *)malloc(sizeof(mcl_task));
-    if (!tsk)
-    {
+    if (!tsk) {
         eprintf("Error allocating MCL task");
         goto err_hdl;
     }
 
     req = (mcl_request *)malloc(sizeof(mcl_request));
-    if (!req)
-    {
+    if (!req) {
         eprintf("Error allocating MCL request");
         goto err_tsk;
     }
@@ -182,8 +162,7 @@ mcl_handle *__task_create(uint64_t flags)
     req->hdl = hdl;
     req->tsk = tsk;
 
-    if (rlist_add(&ptasks, &ptasks_lock, req))
-    {
+    if (rlist_add(&ptasks, &ptasks_lock, req)) {
         eprintf("Error adding task %u to not actvie task list", hdl->rid);
         goto err_req;
     }
@@ -203,8 +182,7 @@ err:
     return NULL;
 }
 
-mcl_transfer *__transfer_create(uint64_t nargs, uint64_t ncopies, uint64_t flags)
-{
+mcl_transfer *__transfer_create(uint64_t nargs, uint64_t ncopies, uint64_t flags) {
     mcl_transfer *t = (mcl_transfer *)malloc(sizeof(mcl_transfer));
     t->nargs = nargs;
     t->args = (void **)malloc(sizeof(void *) * nargs);
@@ -214,8 +192,7 @@ mcl_transfer *__transfer_create(uint64_t nargs, uint64_t ncopies, uint64_t flags
     t->ncopies = ncopies;
     t->handles = (mcl_handle **)malloc(sizeof(mcl_handle *) * ncopies);
 
-    for (uint64_t i = 0; i < ncopies; i++)
-    {
+    for (uint64_t i = 0; i < ncopies; i++) {
         t->handles[i] = __task_create(flags);
         t->handles[i]->cmd = MSG_CMD_TRAN;
 
@@ -223,14 +200,12 @@ mcl_transfer *__transfer_create(uint64_t nargs, uint64_t ncopies, uint64_t flags
         mcl_task *task = NULL;
 
         rqst = rlist_search(&ptasks, &ptasks_lock, t->handles[i]->rid);
-        if (!rqst)
-        {
+        if (!rqst) {
             goto err;
         }
         task = req_getTask(rqst);
         task->args = (mcl_arg *)malloc(nargs * sizeof(mcl_arg));
-        if (!(task->args))
-        {
+        if (!(task->args)) {
             eprintf("Error allocating host memory for transfer");
             goto err;
         }
@@ -243,8 +218,7 @@ err:
     return NULL;
 }
 
-static inline mcl_pobj *__build_program(mcl_program *p, unsigned int n)
-{
+static inline mcl_pobj *__build_program(mcl_program *p, unsigned int n) {
     mcl_pobj *obj = prg_getObj(p, n);
     cl_context clctx = res_getClCtx(n);
     cl_device_id dev = res_getClDev(n);
@@ -257,15 +231,13 @@ static inline mcl_pobj *__build_program(mcl_program *p, unsigned int n)
 #ifdef _DEBUG
     __get_time(&start);
 #endif
-    if (cas(&(obj->status), MCL_KER_NONE, MCL_KER_COMPILING))
-    {
+    if (cas(&(obj->status), MCL_KER_NONE, MCL_KER_COMPILING)) {
         Dprintf("\t Building program %s for device %u (%lu bytes)...", p->key, n, p->src_len);
 #ifdef _DEBUG
         if (p->flags & MCL_PRG_SRC)
             Dprintf("\t Program source: \n %s", p->src);
 #endif
-        switch (p->flags & MCL_PRG_MASK)
-        {
+        switch (p->flags & MCL_PRG_MASK) {
         case MCL_PRG_SRC:
             obj->cl_prg = clCreateProgramWithSource(clctx, 1, (const char **)&(p->src),
                                                     (const size_t *)&(p->src_len), &ret);
@@ -284,8 +256,7 @@ static inline mcl_pobj *__build_program(mcl_program *p, unsigned int n)
             goto err;
         }
 
-        if (ret != CL_SUCCESS)
-        {
+        if (ret != CL_SUCCESS) {
             eprintf("Error loading CL program source (ret = %d)", ret);
             goto err;
         }
@@ -293,8 +264,7 @@ static inline mcl_pobj *__build_program(mcl_program *p, unsigned int n)
         Dprintf("\t Compiling program for resources %u (options %s)...", n, p->opts);
 
         ret = clBuildProgram(obj->cl_prg, 1, &dev, p->opts, NULL, NULL);
-        if (ret != CL_SUCCESS)
-        {
+        if (ret != CL_SUCCESS) {
             eprintf("Error compiling CL program for resources %u (ret = %d). \n", n, ret);
             size_t log_size;
             clGetProgramBuildInfo(obj->cl_prg, dev, CL_PROGRAM_BUILD_LOG, 0, NULL, &log_size);
@@ -306,8 +276,7 @@ static inline mcl_pobj *__build_program(mcl_program *p, unsigned int n)
 
         cas(&(obj->status), MCL_KER_COMPILING, MCL_KER_BUILT);
     }
-    else
-    {
+    else {
         while (obj->status == MCL_KER_COMPILING)
             sched_yield();
 
@@ -330,8 +299,7 @@ err:
     return NULL;
 }
 
-int __set_prg(char *path, char *copts, unsigned long flags)
-{
+int __set_prg(char *path, char *copts, unsigned long flags) {
     int ret = 0;
     uint64_t archs = 0x0;
     unsigned int i;
@@ -343,20 +311,16 @@ int __set_prg(char *path, char *copts, unsigned long flags)
      * We need to compile the program for at least one resource to extract number
      * and names of the kernels contained in the program.
      */
-    switch (flags)
-    {
-    case MCL_PRG_SRC:
-    {
+    switch (flags) {
+    case MCL_PRG_SRC: {
         archs = MCL_TASK_CPU | MCL_TASK_GPU;
         break;
     }
-    case MCL_PRG_BIN:
-    {
+    case MCL_PRG_BIN: {
         archs = MCL_TASK_FPGA;
         break;
     }
-    default:
-    {
+    default: {
         eprintf("Support for type of program 0x%lx missing.", flags);
         goto err;
     }
@@ -364,62 +328,54 @@ int __set_prg(char *path, char *copts, unsigned long flags)
 
     Dprintf("\t Looking for a suitable device for program type 0x%lx...", flags);
     for (i = 0; i < mcl_desc.info->ndevs; i++)
-        if (mcl_res[i].dev->type & archs)
-        {
+        if (mcl_res[i].dev->type & archs) {
             target = i;
             break;
         }
 
-    if (target == -1)
-    {
+    if (target == -1) {
         eprintf("No suitable device for program type 0x%lx found!", flags);
         ret = MCL_ERR_INVPRG;
         goto err;
     }
 
     p = prgMap_add(path, copts, flags, archs);
-    if (!p)
-    {
+    if (!p) {
         eprintf("Error linking program %s.", path);
         ret = MCL_ERR_INVPRG;
         goto err;
     }
 
     obj = __build_program(p, target);
-    if (!obj)
-    {
+    if (!obj) {
         eprintf("Error building program %s for resource %d.", path, target);
         ret = MCL_ERR_INVPRG;
         goto err;
     }
 
     ret = clGetProgramInfo(obj->cl_prg, CL_PROGRAM_NUM_KERNELS, sizeof(size_t), &(p->nkernels), NULL);
-    if (ret != CL_SUCCESS)
-    {
+    if (ret != CL_SUCCESS) {
         eprintf("Error quering number of kernels in program (%d)", ret);
         ret = MCL_ERR_INVPRG;
         goto err;
     }
 
     ret = clGetProgramInfo(obj->cl_prg, CL_PROGRAM_KERNEL_NAMES, 0, NULL, &(p->knames_size));
-    if (ret != CL_SUCCESS)
-    {
+    if (ret != CL_SUCCESS) {
         eprintf("Error quering kernel names' length (%d)", ret);
         ret = MCL_ERR_INVPRG;
         goto err;
     }
 
     p->knames = (char *)malloc(p->knames_size);
-    if (!(p->knames))
-    {
+    if (!(p->knames)) {
         eprintf("Error allocating memory to store kernel names");
         ret = MCL_ERR_INVPRG;
         goto err;
     }
 
     ret = clGetProgramInfo(obj->cl_prg, CL_PROGRAM_KERNEL_NAMES, p->knames_size, p->knames, NULL);
-    if (ret != CL_SUCCESS)
-    {
+    if (ret != CL_SUCCESS) {
         eprintf("Error quering kernel names' length (%d)", ret);
         ret = MCL_ERR_INVPRG;
         goto err;
@@ -427,14 +383,12 @@ int __set_prg(char *path, char *copts, unsigned long flags)
     Dprintf("\t Found %lu kernels in program: %s (size %lu)", p->nkernels, p->knames, p->knames_size);
 
     char *ptr = strtok(p->knames, ";");
-    while (ptr != NULL)
-    {
+    while (ptr != NULL) {
         mcl_kernel *k;
         k = kerMap_add(ptr);
         if (k)
             kerMap_add_prg(k, p);
-        else
-        {
+        else {
             ret = MCL_ERR_INVPRG;
             goto err;
         }
@@ -445,15 +399,13 @@ err:
     return ret;
 }
 
-int __set_kernel(mcl_handle *h, char *name, uint64_t nargs)
-{
+int __set_kernel(mcl_handle *h, char *name, uint64_t nargs) {
     mcl_request *r = NULL;
     mcl_task *t = NULL;
     unsigned int ret = 0;
 
     r = rlist_search(&ptasks, &ptasks_lock, h->rid);
-    if (!r)
-    {
+    if (!r) {
         ret = MCL_ERR_INVREQ;
         goto err;
     }
@@ -461,18 +413,15 @@ int __set_kernel(mcl_handle *h, char *name, uint64_t nargs)
     t = req_getTask(r);
 
     t->kernel = kerMap_search(name);
-    if (t->kernel == NULL)
-    {
+    if (t->kernel == NULL) {
         eprintf("Kernel %s not found", name);
         ret = MCL_ERR_INVARG;
         goto err;
     }
 
-    if (nargs)
-    {
+    if (nargs) {
         t->args = (mcl_arg *)malloc(nargs * sizeof(mcl_arg));
-        if (!(t->args))
-        {
+        if (!(t->args)) {
             ret = MCL_ERR_MEMALLOC;
             goto err;
         }
@@ -486,8 +435,7 @@ err:
     return -ret;
 }
 
-mcl_handle *__task_init(char *path, char *name, uint64_t nargs, char *opts, unsigned long flags)
-{
+mcl_handle *__task_init(char *path, char *name, uint64_t nargs, char *opts, unsigned long flags) {
     mcl_handle *h = __task_create(0);
 
     if (!h)
@@ -498,8 +446,7 @@ mcl_handle *__task_init(char *path, char *name, uint64_t nargs, char *opts, unsi
     return h;
 }
 
-int __set_arg(mcl_handle *h, uint64_t id, void *addr, size_t size, off_t offset, uint64_t flags)
-{
+int __set_arg(mcl_handle *h, uint64_t id, void *addr, size_t size, off_t offset, uint64_t flags) {
     mcl_request *r = NULL;
     mcl_task *tsk = NULL;
     mcl_arg *a = NULL;
@@ -511,8 +458,7 @@ int __set_arg(mcl_handle *h, uint64_t id, void *addr, size_t size, off_t offset,
     tsk = req_getTask(r);
     a = task_getArgAddr(tsk, id);
 
-    if (flags & MCL_ARG_SCALAR)
-    {
+    if (flags & MCL_ARG_SCALAR) {
         a->addr = (void *)malloc(size);
         if (!(a->addr))
             return -MCL_ERR_MEMALLOC;
@@ -526,8 +472,7 @@ int __set_arg(mcl_handle *h, uint64_t id, void *addr, size_t size, off_t offset,
     a->offset = offset;
     a->flags = flags;
 
-    if (a->flags & MCL_ARG_SHARED)
-    {
+    if (a->flags & MCL_ARG_SHARED) {
         a->flags |= MCL_ARG_BUFFER | MCL_ARG_RESIDENT;
     }
 
@@ -537,8 +482,7 @@ int __set_arg(mcl_handle *h, uint64_t id, void *addr, size_t size, off_t offset,
     return 0;
 }
 
-int __am_exec(mcl_handle *hdl, mcl_request *req, uint64_t flags)
-{
+int __am_exec(mcl_handle *hdl, mcl_request *req, uint64_t flags) {
     mcl_task *t = req_getTask(req);
     struct mcl_msg_struct msg;
     int retcode = 0;
@@ -554,8 +498,7 @@ int __am_exec(mcl_handle *hdl, mcl_request *req, uint64_t flags)
     msg.flags = (flags & MCL_TASK_FLAG_MASK) >> MCL_TASK_FLAG_SHIFT;
     msg.nres = 0;
 
-    for (int i = 0; i < MCL_DEV_DIMS; i++)
-    {
+    for (int i = 0; i < MCL_DEV_DIMS; i++) {
         msg.pesdata.pes[i] = t->pes[i];
         msg.pesdata.lpes[i] = t->lpes[i];
     }
@@ -570,11 +513,9 @@ int __am_exec(mcl_handle *hdl, mcl_request *req, uint64_t flags)
     mcl_rdata *el;
     uint8_t swap_success;
 
-    for (uint64_t i = 0; i < t->nargs; i++)
-    {
+    for (uint64_t i = 0; i < t->nargs; i++) {
         a = &(t->args[i]);
-        if ((a->flags & MCL_ARG_BUFFER) && (a->flags & MCL_ARG_INVALID) && (el = rdata_get(a->addr, 0)))
-        {
+        if ((a->flags & MCL_ARG_BUFFER) && (a->flags & MCL_ARG_INVALID) && (el = rdata_get(a->addr, 0))) {
             mcl_msg free_msg;
             msg_init(&free_msg);
             free_msg.cmd = MSG_CMD_FREE;
@@ -583,8 +524,7 @@ int __am_exec(mcl_handle *hdl, mcl_request *req, uint64_t flags)
             memset(free_msg.resdata, 0, sizeof(msg_arg_t));
             free_msg.resdata[0].mem_id = el->id;
             free_msg.resdata[0].mem_size = el->size;
-            if (cli_msg_send(&free_msg))
-            {
+            if (cli_msg_send(&free_msg)) {
                 eprintf("Error sending msg 0x%" PRIx64 ".", free_msg.cmd);
                 msg_free(&msg);
                 goto err;
@@ -595,29 +535,24 @@ int __am_exec(mcl_handle *hdl, mcl_request *req, uint64_t flags)
             rdata_del(el);
         }
 
-        if ((a->flags & MCL_ARG_BUFFER) && (a->flags & MCL_ARG_RESIDENT))
-        {
+        if ((a->flags & MCL_ARG_BUFFER) && (a->flags & MCL_ARG_RESIDENT)) {
             el = rdata_get(a->addr, 1);
-            if (el)
-            {
+            if (el) {
                 msg.resdata[msg.nres].mem_id = el->id;
                 msg.resdata[msg.nres].overall_size = (uint64_t)((el->size / MCL_MEM_PAGE_SIZE) + .5);
             }
-            else
-            {
+            else {
                 msg.resdata[msg.nres].mem_id = get_mem_id();
                 el = rdata_add(a->addr, msg.resdata[msg.nres].mem_id, a->size, a->flags);
                 msg.resdata[msg.nres].overall_size = (uint64_t)((el->size / MCL_MEM_PAGE_SIZE) + .5);
             }
             a->rdata_el = el;
 
-            if (a->flags & MCL_ARG_DYNAMIC)
-            {
+            if (a->flags & MCL_ARG_DYNAMIC) {
                 msg.resdata[msg.nres].flags = MSG_ARGFLAG_EXCLUSIVE;
             }
 
-            if (a->flags & MCL_ARG_SHARED)
-            {
+            if (a->flags & MCL_ARG_SHARED) {
                 msg.resdata[msg.nres].flags |= MSG_ARGFLAG_SHARED;
                 msg.resdata[msg.nres].pid = mcl_get_shared_mem_pid(a->addr);
             }
@@ -633,16 +568,14 @@ int __am_exec(mcl_handle *hdl, mcl_request *req, uint64_t flags)
     msg.mem = ceil((t->mem * (1 + MCL_TASK_OVERHEAD)) / MCL_PAGE_SIZE);
 
     msg.ndependencies = t->ndependencies;
-    for (uint64_t i = 0; i < t->ndependencies; i++)
-    {
+    for (uint64_t i = 0; i < t->ndependencies; i++) {
         msg.dependencies[i] = t->dependencies[i]->key;
     }
 
     // Dprintf("Sending EXE AM RID: %"PRIu64" PEs: %"PRIu64" MEM: %"PRIu64, msg.rid, msg.pes,
     //     msg.mem);
 
-    if (!cas(&(hdl->status), MCL_REQ_ALLOCATED, MCL_REQ_PENDING))
-    {
+    if (!cas(&(hdl->status), MCL_REQ_ALLOCATED, MCL_REQ_PENDING)) {
         eprintf("Task %" PRIu32 " failed to execute with incorrect status: %" PRIu64 ".", hdl->rid, hdl->status);
         retcode = MCL_ERR_INVTSK;
         goto err;
@@ -654,8 +587,7 @@ int __am_exec(mcl_handle *hdl, mcl_request *req, uint64_t flags)
 
     ainc(&(mcl_desc.out_msg));
 
-    if (cli_msg_send(&msg))
-    {
+    if (cli_msg_send(&msg)) {
         eprintf("Error sending msg 0x%" PRIx64, msg.cmd);
         retcode = MCL_ERR_SRVCOMM;
         goto err;
@@ -672,8 +604,7 @@ err:
     return -retcode;
 }
 
-int __am_null(mcl_request *req)
-{
+int __am_null(mcl_request *req) {
     struct mcl_msg_struct msg;
     mcl_handle *hdl = req_getHdl(req);
 
@@ -692,8 +623,7 @@ int __am_null(mcl_request *req)
 
     ainc(&(mcl_desc.out_msg));
 
-    if (cli_msg_send(&msg))
-    {
+    if (cli_msg_send(&msg)) {
         eprintf("Error sending msg 0x%" PRIx64, msg.cmd);
         goto err;
     }
@@ -719,8 +649,7 @@ err:
     return -MCL_ERR_MEMALLOC;
 }
 
-int __internal_wait(mcl_handle *h, int blocking, uint64_t timeout)
-{
+int __internal_wait(mcl_handle *h, int blocking, uint64_t timeout) {
     struct timespec start, now;
     uint64_t tsk_status;
 
@@ -734,14 +663,12 @@ int __internal_wait(mcl_handle *h, int blocking, uint64_t timeout)
     __get_time(&start);
     __get_time(&now);
 
-    while ((tsk_status = __atomic_load_n(&(h->status), __ATOMIC_SEQ_CST)) != MCL_REQ_COMPLETED)
-    {
+    while ((tsk_status = __atomic_load_n(&(h->status), __ATOMIC_SEQ_CST)) != MCL_REQ_COMPLETED) {
         sched_yield();
         __get_time(&now);
     }
 
-    if (tsk_status == MCL_REQ_COMPLETED)
-    {
+    if (tsk_status == MCL_REQ_COMPLETED) {
         Dprintf("Request %u completed.", h->rid);
         return 0;
     }
@@ -751,8 +678,7 @@ int __internal_wait(mcl_handle *h, int blocking, uint64_t timeout)
     return -1;
 }
 
-int cli_register(void)
-{
+int cli_register(void) {
     struct mcl_msg_struct msg;
     int ret;
 
@@ -761,8 +687,7 @@ int cli_register(void)
     msg.rid = get_rid();
     msg.threads = (2 + mcl_desc.workers);
 
-    if (cli_msg_send(&msg))
-    {
+    if (cli_msg_send(&msg)) {
         eprintf("Error sending msg 0x%" PRIx64, msg.cmd);
         goto err;
     }
@@ -770,15 +695,13 @@ int cli_register(void)
 
     Dprintf("Waiting for scheduler to accept registration request...");
 
-    while ((ret = cli_msg_recv(&msg)) >= 0)
-    {
+    while ((ret = cli_msg_recv(&msg)) >= 0) {
         if (ret == 0)
             break;
         sched_yield();
     }
 
-    if (msg.cmd == MSG_CMD_ERR)
-    {
+    if (msg.cmd == MSG_CMD_ERR) {
         eprintf("Client registration failed!");
         goto err;
     }
@@ -793,16 +716,14 @@ err:
     return -1;
 }
 
-int cli_deregister(void)
-{
+int cli_deregister(void) {
     struct mcl_msg_struct msg;
 
     msg_init(&msg);
     msg.cmd = MSG_CMD_END;
     msg.rid = get_rid();
 
-    if (cli_msg_send(&msg))
-    {
+    if (cli_msg_send(&msg)) {
         eprintf("Error sending msg 0x%" PRIx64 ".", msg.cmd);
         goto err;
     }
@@ -817,15 +738,13 @@ err:
     return -1;
 }
 
-int cli_setup(void)
-{
+int cli_setup(void) {
     if ((shared_mem_name = getenv("MCL_SHM_NAME")) == NULL)
         shared_mem_name = MCL_SHM_NAME;
 
     Dprintf("Opening shared memory object (%s)...", shared_mem_name);
     mcl_desc.shm_fd = shm_open(shared_mem_name, O_RDONLY, 0);
-    if (mcl_desc.shm_fd < 0)
-    {
+    if (mcl_desc.shm_fd < 0) {
         eprintf("Error opening shared memory object %s.", shared_mem_name);
         perror("shm_open");
         goto err;
@@ -833,8 +752,7 @@ int cli_setup(void)
 
     mcl_desc.info = (mcl_info_t *)mmap(NULL, MCL_SHM_SIZE, PROT_READ, MAP_SHARED,
                                        mcl_desc.shm_fd, 0);
-    if (!mcl_desc.info)
-    {
+    if (!mcl_desc.info) {
         eprintf("Error mapping shared memory object.");
         perror("mmap");
         close(mcl_desc.shm_fd);
@@ -853,31 +771,27 @@ int cli_setup(void)
     strncpy(mcl_desc.saddr.sun_path, socket_name, sizeof(mcl_desc.saddr.sun_path) - 1);
 
     mcl_desc.sock_fd = socket(PF_LOCAL, SOCK_DGRAM, 0);
-    if (mcl_desc.sock_fd < 0)
-    {
+    if (mcl_desc.sock_fd < 0) {
         eprintf("Error creating communication socket");
         perror("socket");
         goto err_shm_fd;
     }
 
-    if (fcntl(mcl_desc.sock_fd, F_SETFL, O_NONBLOCK))
-    {
+    if (fcntl(mcl_desc.sock_fd, F_SETFL, O_NONBLOCK)) {
         eprintf("Error setting scheduler socket flags");
         perror("fcntl");
         goto err_shm_fd;
     }
 
     if (setsockopt(mcl_desc.sock_fd, SOL_SOCKET, SO_SNDBUF, &(mcl_desc.info->sndbuf),
-                   sizeof(uint64_t)))
-    {
+                   sizeof(uint64_t))) {
         eprintf("Error setting scheduler sending buffer");
         perror("setsockopt");
         goto err_shm_fd;
     }
 
     if (setsockopt(mcl_desc.sock_fd, SOL_SOCKET, SO_RCVBUF, &(mcl_desc.info->rcvbuf),
-                   sizeof(uint64_t)))
-    {
+                   sizeof(uint64_t))) {
         eprintf("Error setting scheduler receiving buffer");
         perror("setsockopt");
         goto err_shm_fd;
@@ -887,16 +801,14 @@ int cli_setup(void)
     uint64_t r = 0, s = 0;
     socklen_t len = sizeof(uint64_t);
 
-    if (getsockopt(mcl_desc.sock_fd, SOL_SOCKET, SO_SNDBUF, &s, &len))
-    {
+    if (getsockopt(mcl_desc.sock_fd, SOL_SOCKET, SO_SNDBUF, &s, &len)) {
         eprintf("Error getting scheduler sended buffer");
         perror("getsockopt");
     }
 
     len = sizeof(uint64_t);
 
-    if (getsockopt(mcl_desc.sock_fd, SOL_SOCKET, SO_RCVBUF, &r, &len))
-    {
+    if (getsockopt(mcl_desc.sock_fd, SOL_SOCKET, SO_RCVBUF, &r, &len)) {
         eprintf("Error getting scheduler receiving buffer");
         perror("getsockopt");
     }
@@ -916,35 +828,30 @@ int cli_setup(void)
     Dprintf("Client communication socket %s created", mcl_desc.caddr.sun_path);
 
     if (bind(mcl_desc.sock_fd, (struct sockaddr *)&mcl_desc.caddr,
-             sizeof(struct sockaddr_un)) < 0)
-    {
+             sizeof(struct sockaddr_un)) < 0) {
         eprintf("Error binding client communication socket %s.", mcl_desc.caddr.sun_path);
         perror("bind");
         goto err_socket;
     }
     Dprintf("Client communication socket bound to %s", mcl_desc.caddr.sun_path);
 
-    if (resource_discover(&cl_plts, &mcl_plts, &mcl_class, NULL, NULL))
-    {
+    if (resource_discover(&cl_plts, &mcl_plts, &mcl_class, NULL, NULL)) {
         eprintf("Error discovering computing elements.");
         goto err_socket;
     }
 
     mcl_res = (mcl_resource_t *)malloc(mcl_desc.info->ndevs * sizeof(mcl_resource_t));
-    if (!mcl_res)
-    {
+    if (!mcl_res) {
         eprintf("Error allocating memory to map MCL resources.");
         goto err_socket;
     }
 
-    if (resource_map(mcl_plts, mcl_desc.info->nplts, mcl_class, mcl_res))
-    {
+    if (resource_map(mcl_plts, mcl_desc.info->nplts, mcl_class, mcl_res)) {
         eprintf("Error mapping devices to MCL resources.");
         goto err_res;
     }
 
-    if (resource_create_ctxt(mcl_res, mcl_desc.info->ndevs))
-    {
+    if (resource_create_ctxt(mcl_res, mcl_desc.info->ndevs)) {
         eprintf("Error creating resource contexts.");
         goto err_res;
     }
@@ -952,40 +859,34 @@ int cli_setup(void)
     Dprintf("Discovered %" PRIu64 " platforms and a total of %" PRIu64 " devices",
             mcl_desc.info->nplts, mcl_desc.info->ndevs);
 
-    if (req_init())
-    {
+    if (req_init()) {
         eprintf("Error initializing request hash table");
         goto err_res;
     }
 
-    if (rlist_init(&ptasks_lock))
-    {
+    if (rlist_init(&ptasks_lock)) {
         eprintf("Error initializing not active task list lock");
         goto err_res;
     }
 
-    if (rlist_init(&ftasks_lock))
-    {
+    if (rlist_init(&ftasks_lock)) {
         eprintf("Error initializing pending task list lock");
         goto err_res;
     }
 
-    if (rdata_init())
-    {
+    if (rdata_init()) {
         eprintf("Error initializing resident data hash table");
         goto err_res;
     }
 
     mcl_shm_init();
 
-    if (msg_setup(mcl_desc.info->ndevs))
-    {
+    if (msg_setup(mcl_desc.info->ndevs)) {
         eprintf("Error setting up messages");
         goto err_rdata;
     }
 
-    if (cli_register())
-    {
+    if (cli_register()) {
         eprintf("Error registering process %d.", mcl_desc.pid);
         goto err_rdata;
     }
@@ -1006,16 +907,14 @@ err:
     return -1;
 }
 
-static inline int cli_shutdown_dev(void)
-{
+static inline int cli_shutdown_dev(void) {
 #ifdef _STATS
     mcl_device_t *dev;
     int i;
 #endif
     Dprintf("Shutting down devices...");
 #ifdef _STATS
-    for (i = 0; i < mcl_desc.info->ndevs; i++)
-    {
+    for (i = 0; i < mcl_desc.info->ndevs; i++) {
         dev = mcl_res[i].dev;
         stprintf("Resource[%d] Task Executed=%" PRIu64 " Successful=%" PRIu64 " Failed=%" PRIu64 "",
                  i, dev->task_executed, dev->task_successful, dev->task_failed);
@@ -1024,14 +923,12 @@ static inline int cli_shutdown_dev(void)
     return 0;
 }
 
-int cli_shutdown(void)
-{
+int cli_shutdown(void) {
     Dprintf("MCL shutting down.");
     mcl_shm_free();
     rdata_free();
 
-    if (cli_shutdown_dev())
-    {
+    if (cli_shutdown_dev()) {
         eprintf("Error shutting down devices...");
         goto err;
     }
@@ -1042,14 +939,11 @@ int cli_shutdown(void)
     close(mcl_desc.sock_fd);
     unlink(mcl_desc.caddr.sun_path);
 
-    for (uint64_t i = 0; i < mcl_desc.info->nplts; i++)
-    {
-        for (uint64_t j = 0; j < mcl_plts[i].ndev; j++)
-        {
+    for (uint64_t i = 0; i < mcl_desc.info->nplts; i++) {
+        for (uint64_t j = 0; j < mcl_plts[i].ndev; j++) {
             clReleaseDevice(mcl_plts[i].cl_dev[j]);
             clReleaseContext(mcl_plts[i].devs[j].cl_ctxt);
-            for (uint64_t k = 0; k < mcl_plts[i].devs[j].nqueues; k++)
-            {
+            for (uint64_t k = 0; k < mcl_plts[i].devs[j].nqueues; k++) {
                 clReleaseCommandQueue(mcl_plts[i].devs[j].cl_queue[k]);
             }
             free(mcl_plts[i].devs[j].wisize);
@@ -1058,8 +952,7 @@ int cli_shutdown(void)
         free(mcl_plts[i].devs);
     }
 
-    if (munmap(mcl_desc.info, MCL_SHM_SIZE))
-    {
+    if (munmap(mcl_desc.info, MCL_SHM_SIZE)) {
         eprintf("Error unmapping Minos scheduler shared memory.");
         goto err;
     }
@@ -1084,8 +977,7 @@ err:
     return -1;
 }
 
-static inline int __task_setup_buffers(mcl_request *r)
-{
+static inline int __task_setup_buffers(mcl_request *r) {
     mcl_arg *a;
     size_t arg_size;
     void *arg_value;
@@ -1107,58 +999,49 @@ static inline int __task_setup_buffers(mcl_request *r)
     context->buffers = (cl_mem *)malloc(sizeof(cl_mem) * t->nargs);
     memset(context->buffers, 0, sizeof(cl_mem) * t->nargs);
 
-    if (!context->buffers)
-    {
+    if (!context->buffers) {
         eprintf("Error allocating OpenCL object buffers.");
         return -MCL_ERR_MEMALLOC;
     }
 
-    for (i = 0; i < t->nargs; i++)
-    {
+    for (i = 0; i < t->nargs; i++) {
         a = &(t->args[i]);
         a->new_buffer = 1;
         a->moved_data = 0;
 
         Dprintf("  Setting up arg %d addr %p size %lu flags 0x%" PRIx64 "", i, a->addr, a->size, a->flags);
 
-        if ((a->flags & MCL_ARG_BUFFER) && !(a->flags & MCL_ARG_LOCAL))
-        {
+        if ((a->flags & MCL_ARG_BUFFER) && !(a->flags & MCL_ARG_LOCAL)) {
 
-            if (a->flags & MCL_ARG_RESIDENT)
-            {
+            if (a->flags & MCL_ARG_RESIDENT) {
                 /* we might need to check that flags are the same... */
                 context->buffers[i] = rdata_get_mem(a->rdata_el, r->res, a->size, a->offset, a->flags, queue, &ret);
 
-                if (!context->buffers[i])
-                {
+                if (!context->buffers[i]) {
                     eprintf("Error with resident memory at task: %" PRIu32 ", argument %d, address %p", r->key, i, a->addr);
                     goto err;
                 }
             }
-            else
-            {
+            else {
                 Dprintf("\t Creating buffer...");
 #ifdef _DEBUG
                 __get_time(&start);
 #endif
                 flags = arg_flags_to_cl_flags(a->flags);
                 context->buffers[i] = clCreateBuffer(ctxt, flags, a->size, NULL, &ret);
-                if (ret != CL_SUCCESS)
-                {
+                if (ret != CL_SUCCESS) {
                     eprintf("Error creating input OpenCL buffer %d (%d).", i, ret);
                     retcode = MCL_ERR_MEMALLOC;
                     goto err;
                 }
-                if ((a->flags & MCL_ARG_INPUT))
-                {
+                if ((a->flags & MCL_ARG_INPUT)) {
                     VDprintf("    Writing data to buffer...");
                     ret = clEnqueueWriteBuffer(queue, context->buffers[i], CL_FALSE, 0,
                                                a->size, a->addr + a->offset, 0, NULL, 0);
                     stats_add(r->worker->bytes_transfered, (a->size));
                     stats_inc(r->worker->n_transfers);
                 }
-                else if ((a->flags & MCL_ARG_OUTPUT))
-                {
+                else if ((a->flags & MCL_ARG_OUTPUT)) {
                     /* Output only area: memset to 0
                      * NOTE: this could probably be done faster by using
                      *       pattern_size greater than 1, it would require proper
@@ -1171,8 +1054,7 @@ static inline int __task_setup_buffers(mcl_request *r)
                                               1, 0, a->size, 0, NULL, NULL);
                 }
 
-                if (ret != CL_SUCCESS)
-                {
+                if (ret != CL_SUCCESS) {
                     eprintf("Error for arg %d, OpenCL device %d.", i, ret);
                     retcode = MCL_ERR_MEMCOPY;
                     goto err1;
@@ -1185,10 +1067,8 @@ static inline int __task_setup_buffers(mcl_request *r)
             arg_size = sizeof(cl_mem);
             arg_value = (void *)&(context->buffers[i]);
         }
-        else if (a->flags & MCL_ARG_LOCAL)
-        {
-            if (a->addr != NULL)
-            {
+        else if (a->flags & MCL_ARG_LOCAL) {
+            if (a->addr != NULL) {
                 eprintf("Error, argument address must be NULL for local memory");
                 retcode = MCL_ERR_INVARG;
                 goto err1;
@@ -1197,14 +1077,12 @@ static inline int __task_setup_buffers(mcl_request *r)
             arg_size = a->size;
             arg_value = (void *)NULL;
         }
-        else if (a->flags & MCL_ARG_SCALAR)
-        {
+        else if (a->flags & MCL_ARG_SCALAR) {
             context->buffers[i] = NULL;
             arg_size = a->size;
             arg_value = (void *)a->addr;
         }
-        else
-        {
+        else {
             context->buffers[i] = NULL;
             eprintf("Type of argument not recognized (flags = 0x%" PRIx64 ")!",
                     a->flags);
@@ -1219,8 +1097,7 @@ static inline int __task_setup_buffers(mcl_request *r)
         Dprintf("\t i: %d, arg_size: %lu, arg_value: %p", i, arg_size, arg_value);
         ret = clSetKernelArg(context->kernel, i, arg_size, arg_value);
 
-        if (ret != CL_SUCCESS)
-        {
+        if (ret != CL_SUCCESS) {
             eprintf("Error setting OpenCL argument %d (%d).", i, ret);
             retcode = MCL_ERR_INVARG;
             goto err;
@@ -1237,8 +1114,7 @@ err:
     return -retcode;
 }
 
-static inline int __save_program(mcl_pobj *obj, cl_program prg)
-{
+static inline int __save_program(mcl_pobj *obj, cl_program prg) {
     cl_int err;
 
     Dprintf("  Saving program...");
@@ -1247,8 +1123,7 @@ static inline int __save_program(mcl_pobj *obj, cl_program prg)
                            sizeof(size_t),
                            &(obj->binary_len), NULL);
 
-    if (err != CL_SUCCESS)
-    {
+    if (err != CL_SUCCESS) {
         eprintf("Error quiering program binary size (%d)", err);
         return -1;
     }
@@ -1258,8 +1133,7 @@ static inline int __save_program(mcl_pobj *obj, cl_program prg)
     err = clGetProgramInfo(prg, CL_PROGRAM_BINARIES, sizeof(char *),
                            &(obj->binary), NULL);
 
-    if (err != CL_SUCCESS)
-    {
+    if (err != CL_SUCCESS) {
         eprintf("Error quiering program binary (%d)", err);
         return -1;
     }
@@ -1269,8 +1143,7 @@ static inline int __save_program(mcl_pobj *obj, cl_program prg)
     return 0;
 }
 
-static inline int __task_setup(mcl_request *r)
-{
+static inline int __task_setup(mcl_request *r) {
     cl_int ret;
     mcl_task *t = req_getTask(r);
     mcl_kernel *k = task_getKernel(t);
@@ -1282,18 +1155,15 @@ static inline int __task_setup(mcl_request *r)
 
     stats_timestamp(r->hdl->stat_setup);
 
-    if (r->hdl->cmd != MSG_CMD_TRAN)
-    {
+    if (r->hdl->cmd != MSG_CMD_TRAN) {
         p = kerMap_get_prg(k, r->res);
-        if (!p)
-        {
+        if (!p) {
             retcode = MCL_ERR_INVPRG;
             goto err;
         }
 
         obj = __build_program(p, r->res);
-        if (!obj)
-        {
+        if (!obj) {
             retcode = MCL_ERR_INVPRG;
             goto err;
         }
@@ -1301,8 +1171,7 @@ static inline int __task_setup(mcl_request *r)
 
         Dprintf("\t Creating kernel %s...", t->kernel->name);
         ctx->kernel = clCreateKernel(ctx->prg, (const char *)(t->kernel->name), &ret);
-        if (ret != CL_SUCCESS)
-        {
+        if (ret != CL_SUCCESS) {
             eprintf("Error creating kernel %s (ret = %d)",
                     t->kernel->name, ret);
             goto err;
@@ -1315,14 +1184,12 @@ static inline int __task_setup(mcl_request *r)
         ret = clGetKernelWorkGroupInfo(ctx->kernel, mcl_res[r->res].dev->cl_dev,
                                        CL_KERNEL_WORK_GROUP_SIZE,
                                        sizeof(size_t), &kwgroup, NULL);
-        if (ret != CL_SUCCESS)
-        {
+        if (ret != CL_SUCCESS) {
             eprintf("Error querying the kernel work group size! (%d)\n", ret);
             retcode = MCL_ERR_INVTSK;
             goto err;
         }
-        if (t->lpes[0] * t->lpes[1] * t->lpes[2] > kwgroup)
-        {
+        if (t->lpes[0] * t->lpes[1] * t->lpes[2] > kwgroup) {
             eprintf("Provided local size too large for device %" PRIu64 " [%" PRIu64 ",%" PRIu64 ",%" PRIu64 "] > %lu",
                     r->res, t->lpes[0], t->lpes[1], t->lpes[2], kwgroup);
             retcode = MCL_ERR_INVTSK;
@@ -1335,8 +1202,7 @@ static inline int __task_setup(mcl_request *r)
             t->nargs);
 
     retcode = __task_setup_buffers(r);
-    if (retcode < 0)
-    {
+    if (retcode < 0) {
         retcode = -retcode;
         goto err;
     }
@@ -1347,39 +1213,32 @@ err:
     return -retcode;
 }
 
-static inline int __task_release(mcl_request *r)
-{
+static inline int __task_release(mcl_request *r) {
     mcl_task *t = req_getTask(r);
     mcl_context *ctx = task_getCtxAddr(t);
     int i;
     int ret = 0;
     Dprintf("Task %u Removing %" PRIu64 " arguemnts", req_getHdl(r)->rid, t->nargs);
 
-    for (i = 0; i < t->nargs; i++)
-    {
+    for (i = 0; i < t->nargs; i++) {
         Dprintf("\t Removing argument %d: ADDR: %p SIZE: %lu FLAGS: 0x%" PRIx64 " ", i,
                 t->args[i].addr, t->args[i].size, t->args[i].flags);
 
-        if (t->args[i].flags & MCL_ARG_SCALAR)
-        {
+        if (t->args[i].flags & MCL_ARG_SCALAR) {
             free(t->args[i].addr);
             Dprintf("\t\t Scalar arguement removed");
         }
-        else if ((t->args[i].flags & MCL_ARG_RESIDENT))
-        {
+        else if ((t->args[i].flags & MCL_ARG_RESIDENT)) {
             rdata_put(t->args[i].rdata_el);
             rdata_put_mem(t->args[i].rdata_el, t->args[i].offset);
-            if (t->args[i].flags & MCL_ARG_OUTPUT)
-            {
+            if (t->args[i].flags & MCL_ARG_OUTPUT) {
                 rdata_remove_subbuffers(t->args[i].rdata_el, t->args[i].size, t->args[i].offset);
-                if (t->args[i].flags & MCL_ARG_SHARED)
-                {
+                if (t->args[i].flags & MCL_ARG_SHARED) {
                     msync(t->args[i].addr, t->args[i].size, MS_INVALIDATE);
                 }
             }
 
-            if (t->args[i].flags & MCL_ARG_DONE)
-            {
+            if (t->args[i].flags & MCL_ARG_DONE) {
                 mcl_msg free_msg;
                 msg_init(&free_msg);
                 free_msg.cmd = MSG_CMD_FREE;
@@ -1388,8 +1247,7 @@ static inline int __task_release(mcl_request *r)
                 memset(free_msg.resdata, 0, sizeof(msg_arg_t));
                 free_msg.resdata[0].mem_id = t->args[i].rdata_el->id;
                 free_msg.resdata[0].mem_size = t->args[i].size;
-                if (cli_msg_send(&free_msg))
-                {
+                if (cli_msg_send(&free_msg)) {
                     eprintf("Error sending msg 0x%" PRIx64 ".", free_msg.cmd);
                     msg_free(&free_msg);
                     ret = MCL_ERR_SRVCOMM;
@@ -1401,8 +1259,7 @@ static inline int __task_release(mcl_request *r)
                 rdata_del(t->args[i].rdata_el);
             }
         }
-        else
-        {
+        else {
             clReleaseMemObject(ctx->buffers[i]);
         }
     }
@@ -1417,8 +1274,7 @@ static inline int __task_release(mcl_request *r)
     return ret;
 }
 
-static inline int cli_evict_am(struct worker_struct *desc, mcl_msg *msg)
-{
+static inline int cli_evict_am(struct worker_struct *desc, mcl_msg *msg) {
     uint32_t mem_id;
     int ret;
 
@@ -1426,8 +1282,7 @@ static inline int cli_evict_am(struct worker_struct *desc, mcl_msg *msg)
     ret = rdata_release_mem_by_id(mem_id, msg->res);
 
     /** TODO: Program scheduler to check result of this command **/
-    if (ret)
-    {
+    if (ret) {
         eprintf("Error executing evict command.");
         return -1;
     }
@@ -1435,27 +1290,22 @@ static inline int cli_evict_am(struct worker_struct *desc, mcl_msg *msg)
     return 0;
 }
 
-static inline int create_waitlist(mcl_task *t, uint64_t res, int *nwait, cl_event *waitlist)
-{
+static inline int create_waitlist(mcl_task *t, uint64_t res, int *nwait, cl_event *waitlist) {
     // cl_context ctx = res_getClCtx(res);
     // cl_int err;
     uint64_t waitlist_idx = 0;
-    for (uint32_t i = 0; i < t->ndependencies; i++)
-    {
+    for (uint32_t i = 0; i < t->ndependencies; i++) {
         mcl_request *r = t->dependencies[i];
         mcl_task *dep_task = t->dependencies[i]->tsk;
-        if (__atomic_load_n(&(r->hdl->status), __ATOMIC_SEQ_CST) == MCL_REQ_EXECUTING && r->res == res)
-        {
+        if (__atomic_load_n(&(r->hdl->status), __ATOMIC_SEQ_CST) == MCL_REQ_EXECUTING && r->res == res) {
             waitlist[waitlist_idx++] = dep_task->ctx.event;
         }
-        else
-        {
+        else {
             uint32_t dep_idx = ainc(&dep_task->ndependents);
 
             // Temporary solution to pause thread
             // eprintf("Trying to enqueue dependency from another device for handle %s depending on %s, res: %"PRIu64", dep res: %"PRIu64"", t->kname, dep_task->kname, res, r->res);
-            while (__atomic_load_n(&(dep_task->dependent_events[dep_idx]), __ATOMIC_SEQ_CST) == NULL)
-            {
+            while (__atomic_load_n(&(dep_task->dependent_events[dep_idx]), __ATOMIC_SEQ_CST) == NULL) {
                 sched_yield();
             }
 
@@ -1475,8 +1325,7 @@ static inline int create_waitlist(mcl_task *t, uint64_t res, int *nwait, cl_even
     return 0;
 }
 
-static inline int cli_exec_am(struct worker_struct *desc, struct mcl_msg_struct *msg)
-{
+static inline int cli_exec_am(struct worker_struct *desc, struct mcl_msg_struct *msg) {
     mcl_request *r = NULL;
     mcl_handle *h = NULL;
     mcl_task *t = NULL;
@@ -1492,8 +1341,7 @@ static inline int cli_exec_am(struct worker_struct *desc, struct mcl_msg_struct 
     msg_init(&ack);
 
     r = req_search(&hash_reqs, msg->rid);
-    if (!r)
-    {
+    if (!r) {
         retcode = MCL_ERR_INVREQ;
         goto err;
     }
@@ -1515,21 +1363,18 @@ static inline int cli_exec_am(struct worker_struct *desc, struct mcl_msg_struct 
 #endif
 
     swap_success = cas(&(h->status), MCL_REQ_PENDING, MCL_REQ_INPROGRESS);
-    if (!swap_success)
-    {
+    if (!swap_success) {
         eprintf("Request (RID=%u), status incorrect. Status: %" PRIu64 "!", h->rid, h->status);
         goto err_req;
     }
 
-    if (__task_setup(r))
-    {
+    if (__task_setup(r)) {
         eprintf("Error setting up task for execution (RID=%u)!", h->rid);
         retcode = MCL_ERR_INVTSK;
         goto err_req;
     }
 
-    if (h->cmd != MSG_CMD_TRAN)
-    {
+    if (h->cmd != MSG_CMD_TRAN) {
         Dprintf("Executing Task RID=%u RES=%" PRIu64 " DIMS=%u "
                 "PEs=[%" PRIu64 ",%" PRIu64 ",%" PRIu64 "] "
                 "LPEs=[%" PRIu64 ",%" PRIu64 ",%" PRIu64 "]",
@@ -1545,20 +1390,17 @@ static inline int cli_exec_am(struct worker_struct *desc, struct mcl_msg_struct 
     stats_timestamp(h->stat_exec_start);
 
     cl_event kernel_event;
-    if (h->cmd != MSG_CMD_TRAN)
-    {
+    if (h->cmd != MSG_CMD_TRAN) {
         ret = clEnqueueNDRangeKernel(queue, ctx->kernel, t->dims, t->offsets,
                                      (size_t *)t->pes, t->lpes[0] == 0 ? NULL : (size_t *)t->lpes,
                                      nwait, nwait ? waitlist : NULL, &kernel_event);
     }
-    else
-    {
+    else {
         // Wait for all enqueued events (write events)
         ret = clEnqueueMarkerWithWaitList(queue, 0, NULL, &kernel_event);
     }
 
-    if (ret != CL_SUCCESS)
-    {
+    if (ret != CL_SUCCESS) {
         retcode = MCL_ERR_EXEC;
         eprintf("Error executing task %u (%d)", h->rid, ret);
         if (h->cmd == MSG_CMD_TRAN)
@@ -1568,8 +1410,7 @@ static inline int cli_exec_am(struct worker_struct *desc, struct mcl_msg_struct 
 
     int buffer_num = 0;
     cl_event *read_events = malloc(sizeof(cl_event) * t->nargs);
-    for (i = 0; i < t->nargs; i++)
-    {
+    for (i = 0; i < t->nargs; i++) {
 #ifdef MCL_USE_POCL_SHARED_MEM
         if (t->args[i].flags & MCL_ARG_OUTPUT)
 #else
@@ -1580,10 +1421,9 @@ static inline int cli_exec_am(struct worker_struct *desc, struct mcl_msg_struct 
             Dprintf("\tEnqueueing read buffer for argument %d.", i);
             ret = clEnqueueReadBuffer(queue, ctx->buffers[i],
                                       CL_FALSE, 0, t->args[i].size,
-                                      t->args[i].addr, 0,
+                                      t->args[i].addr + t->args[i].offset, 0,
                                       NULL, &read_events[buffer_num++]);
-            if (ret != CL_SUCCESS)
-            {
+            if (ret != CL_SUCCESS) {
                 retcode = MCL_ERR_MEMCOPY;
                 if (h->cmd == MSG_CMD_TRAN)
                     goto err_setup;
@@ -1593,24 +1433,20 @@ static inline int cli_exec_am(struct worker_struct *desc, struct mcl_msg_struct 
             stats_inc(r->worker->n_transfers);
         }
     }
-    if (buffer_num >= 1)
-    {
+    if (buffer_num >= 1) {
         ctx->event = read_events[buffer_num - 1];
     }
-    else
-    {
+    else {
         ctx->event = kernel_event;
     }
 
-    if (!cas(&(h->status), MCL_REQ_INPROGRESS, MCL_REQ_EXECUTING))
-    {
+    if (!cas(&(h->status), MCL_REQ_INPROGRESS, MCL_REQ_EXECUTING)) {
         eprintf("Incorrect status for request %" PRIu32 ": %" PRIu64 "", h->rid, h->status);
         assert(0);
     }
 
     ret = clSetEventCallback(ctx->event, CL_COMPLETE, __task_complete, r);
-    if (ret != CL_SUCCESS)
-    {
+    if (ret != CL_SUCCESS) {
         retcode = MCL_ERR_EXEC;
         if (h->cmd == MSG_CMD_TRAN)
             goto err_setup;
@@ -1653,23 +1489,20 @@ err:
     return -retcode;
 }
 
-void CL_CALLBACK __task_complete(cl_event e, cl_int s, void *v_request)
-{
+void CL_CALLBACK __task_complete(cl_event e, cl_int s, void *v_request) {
     mcl_request *r = (mcl_request *)v_request;
     mcl_task *tsk = r->tsk;
 
     // Notify waiting kernels on other devices
     cl_event dep_event, sentinel = (cl_event)(-1);
-    for (uint32_t i = 0; i < MCL_MAX_DEPENDENCIES; i++)
-    {
+    for (uint32_t i = 0; i < MCL_MAX_DEPENDENCIES; i++) {
         __atomic_exchange(&(tsk->dependent_events[i]), &sentinel, &dep_event, __ATOMIC_SEQ_CST);
         // if (dep_event)
         //     clSetUserEventStatus(dep_event, CL_COMPLETE);
     }
 }
 
-static inline int __check_task(mcl_request *r)
-{
+static inline int __check_task(mcl_request *r) {
     mcl_handle *h = req_getHdl(r);
     mcl_task *t = req_getTask(r);
     mcl_context *ctx = task_getCtxAddr(t);
@@ -1679,16 +1512,14 @@ static inline int __check_task(mcl_request *r)
     cl_int eventStatus = CL_SUBMITTED;
     int attempts = MCL_TASK_CHECK_ATTEMPTS;
 
-    while (eventStatus != CL_COMPLETE && attempts)
-    {
+    while (eventStatus != CL_COMPLETE && attempts) {
         sched_yield();
 
         clFlush(queue);
         retcode = clGetEventInfo(ctx->event, CL_EVENT_COMMAND_EXECUTION_STATUS,
                                  sizeof(cl_int), &eventStatus, NULL);
 
-        if (retcode != CL_SUCCESS)
-        {
+        if (retcode != CL_SUCCESS) {
             retcode = MCL_ERR_EXEC;
             return retcode;
         }
@@ -1749,16 +1580,14 @@ static inline int __check_task(mcl_request *r)
     return -retcode;
 }
 
-void *check_pending(void *data)
-{
+void *check_pending(void *data) {
     mcl_rlist *li;
     mcl_request *r;
 
     int ret;
 
 #ifndef __APPLE__
-    if (mcl_desc.flags & MCL_SET_BIND_WORKERS)
-    {
+    if (mcl_desc.flags & MCL_SET_BIND_WORKERS) {
         int num_cores = sysconf(_SC_NPROCESSORS_ONLN);
         int core_id = (1 + mcl_desc.start_cpu) % num_cores;
         cpu_set_t cpuset;
@@ -1773,8 +1602,7 @@ void *check_pending(void *data)
 
     Dprintf("\t Cleanup thread started...");
     pthread_barrier_wait(&mcl_desc.wt_barrier);
-    while (__atomic_load_n(&status, __ATOMIC_SEQ_CST) != MCL_DONE || rlist_count(&ftasks, &ftasks_lock) > 0)
-    {
+    while (__atomic_load_n(&status, __ATOMIC_SEQ_CST) != MCL_DONE || rlist_count(&ftasks, &ftasks_lock) > 0) {
         li = NULL;
         r = NULL;
         li = rlist_pop(&ftasks, &ftasks_lock);
@@ -1784,17 +1612,14 @@ void *check_pending(void *data)
 
         r = li->req;
         ret = __check_task(r);
-        if (ret > 0)
-        {
+        if (ret > 0) {
             rlist_append(&ftasks, &ftasks_lock, li);
         }
-        else if (ret < 0)
-        {
+        else if (ret < 0) {
             eprintf("Error checking task %u status.", r->key);
             free(li);
         }
-        else
-        {
+        else {
             free(li);
         }
     }
@@ -1809,8 +1634,7 @@ void *check_pending(void *data)
  * of pending tasks may be large, we want to make sure that there are no incoming
  * messages waiting to be processed.
  */
-void *worker(void *data)
-{
+void *worker(void *data) {
     struct worker_struct *desc = (struct worker_struct *)data;
     int ret;
     struct mcl_msg_struct msg;
@@ -1820,8 +1644,7 @@ void *worker(void *data)
     desc->ntasks = 0;
 
 #ifndef __APPLE__
-    if (mcl_desc.flags & MCL_SET_BIND_WORKERS)
-    {
+    if (mcl_desc.flags & MCL_SET_BIND_WORKERS) {
         int num_cores = sysconf(_SC_NPROCESSORS_ONLN);
         int core_id = (desc->id + 2 + mcl_desc.start_cpu) % num_cores;
         cpu_set_t cpuset;
@@ -1842,20 +1665,17 @@ void *worker(void *data)
 #endif
     pthread_barrier_wait(&mcl_desc.wt_barrier);
 
-    while (__atomic_load_n(&(status), __ATOMIC_RELAXED) != MCL_DONE)
-    {
+    while (__atomic_load_n(&(status), __ATOMIC_RELAXED) != MCL_DONE) {
         sched_yield();
         ret = cli_msg_recv(&msg);
 
-        if (ret == -1)
-        {
+        if (ret == -1) {
             eprintf("Worker %" PRIu64 ": Error receiving message.",
                     desc->id);
             pthread_exit(NULL);
         }
 
-        if (ret == 0)
-        {
+        if (ret == 0) {
             Dprintf("\t Worker %" PRIu64 " received message 0x%" PRIx64
                     " for request %" PRIu64,
                     desc->id, msg.cmd,
@@ -1864,8 +1684,7 @@ void *worker(void *data)
             desc->nreqs++;
             stats_inc(mcl_desc.nreqs);
 #endif
-            switch (msg.cmd)
-            {
+            switch (msg.cmd) {
             case MSG_CMD_FREE:
                 ret = cli_evict_am(desc, &msg);
                 break;
