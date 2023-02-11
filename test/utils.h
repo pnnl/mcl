@@ -31,7 +31,7 @@
 #define tdiff(end,start) BILLION * (end.tv_sec - start.tv_sec) + end.tv_nsec - start.tv_nsec
 
 #define DFT_WORKERS  1UL
-#define DFT_SIZE     16UL
+#define DFT_SIZE     128UL
 #ifdef __TEST_MCL
 #define DFT_TYPE     2UL
 #else
@@ -39,7 +39,7 @@
 #endif
 #define DFT_REP      1UL
 #define DFT_SYNC     0UL
-#define DFT_VERIFY   0UL
+#define DFT_VERIFY   1UL
 #define DFT_DID      0UL
 #define BASE         100
 #define TOLERANCE    0.05f

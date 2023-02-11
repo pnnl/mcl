@@ -59,7 +59,7 @@ int test_mcl(double *A, double *B, double *C, size_t N) {
     mcl_handle **hdl = NULL;
     const size_t msize = N * N * sizeof(double);
     const size_t row_size = N * sizeof(double);
-    const size_t tile_size = 4 * row_size; /** TODO: This should be parametric **/
+    const size_t tile_size = 64 * row_size; /** TODO: This should be parametric **/
     const size_t num_tiles = msize / tile_size;
     uint64_t pes[MCL_DEV_DIMS] = {64, N, 1};
     uint64_t i, j;
@@ -93,7 +93,7 @@ int test_mcl(double *A, double *B, double *C, size_t N) {
                 goto err_hdl;
             }
 
-            if (mcl_task_set_kernel(hdl[i], "gemmN", 4)) {
+            if (mcl_task_set_kernel(hdl[(i * num_tiles) + j], "gemmN", 4)) {
                 printf("Error setting %s kernel. Aborting.\n", "gemmN");
                 goto err_hdl;
             }
@@ -271,17 +271,17 @@ int main(int argc, char **argv) {
 #ifdef VERBOSE
         print_matrix(C, size);
 #endif
-        ret = test_results(C, C_test, size);
-    }
+        mcl_finit();
+        mcl_verify(ret);
 
-    mcl_finit();
-    mcl_verify(ret);
+        free(A);
+        free(B);
+        free(C);
+        free(C_test);
 
-    free(A);
-    free(B);
-    free(C);
-    free(C_test);
-
+    err:
+        return ret;
+    
 err:
     return ret;
 }

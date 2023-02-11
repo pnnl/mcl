@@ -1,58 +1,57 @@
-#include "minos_sched.h"
+#include "minos_sched_internal.h"
 
-#include <pthread.h>
 #include <inttypes.h>
+#include <pthread.h>
 #include <utlist.h>
 
 #include <atomics.h>
 
-typedef struct lru_list_node
-{
-    enode_t* parent;
-    struct lru_list_node* next;
-    struct lru_list_node* prev;
+typedef struct lru_list_node {
+    enode_t *parent;
+    struct lru_list_node *next;
+    struct lru_list_node *prev;
 
-    struct lru_list_node* dev_next;
-    struct lru_list_node* dev_prev;
+    struct lru_list_node *dev_next;
+    struct lru_list_node *dev_prev;
 } lru_data_t;
 
-pthread_mutex_t    lru_lock;
-lru_data_t*         lru_list;
-lru_data_t**        dev_lru_list;
+pthread_mutex_t lru_lock;
+lru_data_t *lru_list;
+lru_data_t **dev_lru_list;
 
-void lru_init(mcl_resource_t* res, int ndev) {
-    dev_lru_list = malloc(sizeof(lru_data_t*) * ndev);
-    memset(dev_lru_list, 0, sizeof(lru_data_t*) * ndev);
+void lru_init(mcl_resource_t *res, int ndev) {
+    dev_lru_list = malloc(sizeof(lru_data_t *) * ndev);
+    memset(dev_lru_list, 0, sizeof(lru_data_t *) * ndev);
     lru_list = NULL;
     pthread_mutex_init(&lru_lock, NULL);
     return;
 }
 
-void lru_init_node(enode_t* e) {
-    e->pol_data = (void*)malloc(sizeof(lru_data_t));
+void lru_init_node(enode_t *e) {
+    e->pol_data = (void *)malloc(sizeof(lru_data_t));
     memset(e->pol_data, 0, sizeof(lru_data_t));
-    ((lru_data_t*)e->pol_data)->parent = e;
+    ((lru_data_t *)e->pol_data)->parent = e;
 }
 
-enode_t* lru_evict(void) {
+enode_t *lru_evict(void) {
     pthread_mutex_lock(&lru_lock);
-    lru_data_t* el;
+    lru_data_t *el;
     int success = 0;
     DL_FOREACH(lru_list, el) {
-        if(el->parent->refs)
+        if (el->parent->refs)
             continue;
         success = 1;
         break;
     }
 
-    if(!success) {
+    if (!success) {
         pthread_mutex_unlock(&lru_lock);
         eprintf("Could not find memory not in use");
         return NULL;
     }
-    enode_t* ret = el->parent;
+    enode_t *ret = el->parent;
 
-    Dprintf("Trying to delete memid %"PRIu64" from dev %d lru list", ret->mem_data->mem_id, ret->dev);
+    Dprintf("Trying to delete memid %" PRIu64 " from dev %d lru list", ret->mem_data->mem_id, ret->dev);
     DL_DELETE2((dev_lru_list[ret->dev]), el, dev_prev, dev_next);
     DL_DELETE(lru_list, el);
 
@@ -60,32 +59,32 @@ enode_t* lru_evict(void) {
     el->prev = NULL;
     el->dev_next = NULL;
     el->dev_prev = NULL;
-    
+
     pthread_mutex_unlock(&lru_lock);
     return ret;
 }
 
-enode_t* lru_evict_from_dev(int dev) {
+enode_t *lru_evict_from_dev(int dev) {
     pthread_mutex_lock(&lru_lock);
-    lru_data_t* el;
+    lru_data_t *el;
     int success = 0;
     DL_FOREACH((dev_lru_list[dev]), el) {
-        if(el->parent->refs > 0)
+        if (el->parent->refs > 0)
             continue;
         success = 1;
         break;
     }
-    if(!success) {
+    if (!success) {
         pthread_mutex_unlock(&lru_lock);
         eprintf("Could not find memory not in use");
         return NULL;
     }
 
-    enode_t* ret = el->parent;
+    enode_t *ret = el->parent;
 
     DL_DELETE(lru_list, el);
     DL_DELETE2((dev_lru_list[dev]), el, dev_prev, dev_next);
-    
+
     el->next = NULL;
     el->prev = NULL;
     el->dev_next = NULL;
@@ -95,34 +94,33 @@ enode_t* lru_evict_from_dev(int dev) {
     return ret;
 }
 
-int lru_used(enode_t* e) {
+int lru_used(enode_t *e) {
     pthread_mutex_lock(&lru_lock);
-    lru_data_t* el = (lru_data_t*)e->pol_data;
-    
+    lru_data_t *el = (lru_data_t *)e->pol_data;
 
-    if(el->next || el->prev){
+    if (el->next || el->prev) {
         DL_DELETE(lru_list, el);
         DL_DELETE2((dev_lru_list[e->dev]), el, dev_prev, dev_next);
     }
 
     DL_APPEND(lru_list, el);
     DL_APPEND2((dev_lru_list[e->dev]), el, dev_prev, dev_next);
-    Dprintf("Added memid %"PRIu64" to dev %d lru list at %p", e->mem_data->mem_id, e->dev, dev_lru_list[e->dev]);
+    Dprintf("Added memid %" PRIu64 " to dev %d lru list at %p", e->mem_data->mem_id, e->dev, dev_lru_list[e->dev]);
 
     ainc(&(e->refs));
     pthread_mutex_unlock(&lru_lock);
     return 0;
 }
 
-int lru_released(enode_t* e) {
+int lru_released(enode_t *e) {
     adec(&(e->refs));
     return 0;
 }
 
-int lru_removed(enode_t* e) {
+int lru_removed(enode_t *e) {
     pthread_mutex_lock(&lru_lock);
-    lru_data_t* el = (lru_data_t*)e->pol_data;
-    if(el->next || el->prev){
+    lru_data_t *el = (lru_data_t *)e->pol_data;
+    if (el->next || el->prev) {
         DL_DELETE(lru_list, el);
         DL_DELETE2((dev_lru_list[e->dev]), el, dev_prev, dev_next);
     }
@@ -141,5 +139,4 @@ const struct sched_eviction_policy lru_eviction_policy = {
     .removed = lru_removed,
     .destroy = lru_destroy,
     .evict = lru_evict,
-    .evict_from_dev = lru_evict_from_dev
-};
+    .evict_from_dev = lru_evict_from_dev};
