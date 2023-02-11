@@ -96,12 +96,12 @@ fn main() {
         };
         // println!("cargo:warning= {} {}",shm_path.display(),shm_changed);
 
-        if !mcl_dest.exists() || shm_changed {
+        if !mcl_dest.exists() || shm_changed  {
             if shm_path.exists(){
                 std::fs::remove_file(shm_path.clone()).unwrap();
             }
-            
-            Command::new("cp").args(&["-r", "mcl", &mcl_dest.to_string_lossy()])
+            // println!("cargo:warning=copying mcl");
+            Command::new("cp").args(&["-rf", "mcl", &mcl_dest.to_string_lossy()])
             .status().unwrap();
 
             //build deps
@@ -130,13 +130,12 @@ fn main() {
             else {
                 ""
             };
-            
-
 
             let mcl_build = autotools::Config::new( mcl_dest)
             .reconf("-ivfWnone")
             .cflag(format!("{} -I{} -I{}",shared_mem,uthash_inc.display(),libatomic_inc.display()))
             .ldflag(format!("-L{}",libatomic_lib.display()))
+            // .enable("debug",None)
             .insource(true)
             .build();
             mcl_path = mcl_build.clone().to_string_lossy().to_string();
@@ -157,6 +156,20 @@ fn main() {
     println!("cargo:rerun-if-changed={}/include/mcl_sched.h", mcl_path);
     println!("cargo:rerun-if-changed={}/lib/libmcl.a", mcl_path);
     println!("cargo:rerun-if-changed={}/lib/mcl_sched.a", mcl_path);
+
+    for entry in glob::glob("mcl/**/*.c").expect("failed to read glob pattern"){
+        match entry {
+            Ok(path) =>  println!("cargo:rerun-if-changed={}",path.display()),
+            Err(_) => {},
+        }
+    }
+
+    for entry in glob::glob("mcl/src/**/*.h").expect("failed to read glob pattern"){
+        match entry {
+            Ok(path) =>  println!("cargo:rerun-if-changed={}",path.display()),
+            Err(_) => {},
+        }
+    }
 
     println!("cargo:rerun-if-env-changed=MCL_PATH");
     println!("cargo:rerun-if-env-changed=OCL_PATH_INC");

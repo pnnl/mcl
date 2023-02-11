@@ -1,7 +1,8 @@
-use libmcl_sys::*;
 use crate::low_level;
 use crate::device::DevType;
-use crate::task::{TaskArg,TaskArgData,ReqStatus};
+use crate::task::{TaskArg,ReqStatus};
+
+use libmcl_sys::mcl_transfer;
 
 
 

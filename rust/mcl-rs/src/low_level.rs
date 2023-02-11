@@ -5,10 +5,10 @@ use std::slice;
 use std::ptr::null_mut;
 use libmcl_sys::*;
 use std::ffi::{c_void, CString, CStr};
-use std::mem::size_of;
 
 use crate::task::ArgOpt;
 use crate::prog::PrgType;
+use crate::registered_buffer::{RegisteredBuffer};
 
 
 /// Initializes MCL
@@ -199,9 +199,10 @@ pub(crate) fn task_set_local(hdl: *mut mcl_handle, argid: u64, mem_size: usize, 
 /// `argid` - The index of the argument
 /// `array_slice` - The data to pass
 /// `flags` - Any of the MCL_ARG_* flags. Must include one of MCL_ARG_BUFFER or MCL_ARG_SCALAR
-pub(crate) fn task_set_arg_buffer(hdl: *mut mcl_handle, argid: u64, arg: &[u8], offset: usize, flags: ArgOpt) {
-    assert!(flags.contains(ArgOpt::BUFFER), "buffer was not specified using the buffer attribute.");
-    let err = unsafe { mcl_task_set_arg_buffer(hdl, argid, arg.as_ptr() as *mut c_void, arg.len() as u64, offset  as i64, flags.bits()) };
+pub(crate) fn task_set_arg_registered_buffer(hdl: *mut mcl_handle, argid: u64, buffer: &RegisteredBuffer) {
+    // assert!(flags.contains(ArgOpt::BUFFER), "buffer was not specified using the buffer attribute.");
+    println!("task_set_arg_registered_buffer {argid} {:?} {:?} {:?} {:?}",buffer.base_addr(), buffer.u8_len() as u64, buffer.u8_offset()  as i64, buffer.flags().bits());
+    let err = unsafe { mcl_task_set_arg_buffer(hdl, argid, buffer.base_addr(), buffer.u8_len() as u64, buffer.u8_offset()  as i64, buffer.flags().bits()) };
     if err != 0 {
         panic!("Error {}. Could not set argument for TaskHandle", err);
     }
@@ -262,27 +263,27 @@ pub(crate) fn task_free(hdl: *mut mcl_handle) {
     }
 }
 
-/// Wait for a task to complete
-/// 
-/// ## Arguments
-/// 
-/// `hdl` - The handle to wait for
-pub(crate) fn wait(hdl: *mut mcl_handle) {
+// /// Wait for a task to complete
+// /// 
+// /// ## Arguments
+// /// 
+// /// `hdl` - The handle to wait for
+// pub(crate) fn wait(hdl: *mut mcl_handle) {
     
-    let err = unsafe { mcl_wait(hdl) };
-    if err != 0 {
-        panic!("Error {}. Could not wait for TaskHandle to complete.", err);
-    }
-}
+//     let err = unsafe { mcl_wait(hdl) };
+//     if err != 0 {
+//         panic!("Error {}. Could not wait for TaskHandle to complete.", err);
+//     }
+// }
 
-/// Wait for all pending tasks to complete
-///
-pub(crate) fn wait_all(){
-    let err = unsafe { mcl_wait_all() };
-    if err != 0 {
-        panic!("Error {}. Wait all failed.", err);
-    }
-}
+// /// Wait for all pending tasks to complete
+// ///
+// pub(crate) fn wait_all(){
+//     let err = unsafe { mcl_wait_all() };
+//     if err != 0 {
+//         panic!("Error {}. Wait all failed.", err);
+//     }
+// }
 
 /// Test whether a task has completed
 /// 
@@ -427,37 +428,28 @@ pub(crate) fn transfer_free(t_hdl: *mut mcl_transfer) {
     }
 }
 
-/// Register a mut buffer for future use with MCL resident memory
-pub(crate) fn register_buffer_mut<T>( array_slice: &mut [T],  flags: ArgOpt){
+/// Register a  buffer for future use with MCL resident memory
+pub(crate) fn register_buffer( arg: &[u8],  flags: ArgOpt){
     assert!(flags.contains(ArgOpt::BUFFER), "buffer was not specified using the buffer attribute.");
     assert!(flags.contains(ArgOpt::RESIDENT), "buffer was not specified using the resident attribute.");
-    let err = unsafe { mcl_register_buffer(array_slice.as_mut_ptr() as *mut c_void, (array_slice.len() * size_of::<T>()) as u64, flags.bits()) };
+    println!("register buffer: {:?} {:?} {flags:?}",arg.as_ptr(),arg.len());
+    let err = unsafe { mcl_register_buffer(arg.as_ptr() as *mut c_void, arg.len()  as u64, flags.bits()) };
     if err != 0 {
         panic!("Error {}. Could not register mut buffer", err);
     }
 }
 
-/// Register a buffer for future use with MCL resident memory
-pub(crate) fn register_buffer<T>( array_slice: &[T],  flags: ArgOpt){
-    assert!(flags.contains(ArgOpt::BUFFER), "buffer was not specified using the buffer attribute.");
-    assert!(flags.contains(ArgOpt::RESIDENT), "buffer was not specified using the resident attribute.");
-    let err = unsafe { mcl_register_buffer(array_slice.as_ptr() as *mut c_void, (array_slice.len() * size_of::<T>()) as u64, flags.bits()) };
-    if err != 0 {
-        panic!("Error {}. Could not register  buffer", err);
-    }
-}
-
 /// Unregisters a buffer from MCL Resident memory.
-pub(crate) fn unregister_buffer<T>( array_slice: &[T]){
-    let err = unsafe { mcl_unregister_buffer(array_slice.as_ptr() as *mut c_void) };
+pub(crate) fn unregister_buffer( arg: &[u8]){
+    let err = unsafe { mcl_unregister_buffer(arg.as_ptr() as *mut c_void) };
     if err != 0 {
         panic!("Error {}. Could not inregister  buffer", err);
     }
 }
 
 /// Invalidates device allocations.
-pub(crate) fn invalidate_buffer<T>( array_slice: &[T]){
-    let err = unsafe { mcl_invalidate_buffer(array_slice.as_ptr() as *mut c_void) };
+pub(crate) fn invalidate_buffer( arg: &[u8]){
+    let err = unsafe { mcl_invalidate_buffer(arg.as_ptr() as *mut c_void) };
     if err != 0 {
         panic!("Error {}. Could not inregister  buffer", err);
     }

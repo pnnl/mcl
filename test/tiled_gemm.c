@@ -278,10 +278,8 @@ int main(int argc, char **argv) {
         free(B);
         free(C);
         free(C_test);
+	}
 
-    err:
-        return ret;
-    
 err:
-    return ret;
+	return ret;
 }

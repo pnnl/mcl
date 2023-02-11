@@ -2,8 +2,9 @@ use crate::low_level;
 
 // use crate::device::DevInfo;
 use crate::prog::{Prog,PrgType};
-use crate::task::{Task};
+use crate::task::{Task,TaskArg};
 use crate::transfer::{Transfer};
+use crate::registered_buffer::{RegisteredBuffer};
 
 use bitflags::bitflags;
 
@@ -203,9 +204,15 @@ impl Mcl{
     ///
     ///     let tr = mcl.transfer(1, 1);
     ///```
-    pub fn transfer(&self,nargs: usize, ncopies: usize) -> Transfer{
+    pub fn transfer<'a>(&self,nargs: usize, ncopies: usize) -> Transfer<'a>{
         Transfer::new(nargs,ncopies,0)
     }
+
+    pub fn register_buffer<'a>(&self,arg: TaskArg<'a>) -> RegisteredBuffer<'a>{
+        
+        RegisteredBuffer::new(arg)
+    }
+
 
     // /// Registers `buf` as an MCL buffer object for future use with MCL resident memory
     // ///
@@ -252,24 +259,24 @@ impl Mcl{
     }
 
 
-    /// Wait for all pending tasks to complete
-    ///     
-    /// # Examples
-    ///```no_run 
-    ///     let mcl = mcl_rs::MclEnvBuilder::new().initialize();
-    ///     mcl.load_prog("my_prog",mcl_rs::PrgType::Src);  
-    /// 
-    ///     let data = vec![0; 4];
-    ///     let pes: [u64; 3] = [1, 1, 1];
-    ///     let hdl =  mcl.task("my_kernel", 1)
-    ///                 .arg(mcl_rs::TaskArg::input_slice(&data).write_only())      
-    ///                 .exec(pes);
-    ///     mcl.wait_all();
-    ///```
-    pub fn wait_all(&self) {
-        low_level::wait_all()
+    // /// Wait for all pending tasks to complete
+    // ///     
+    // /// # Examples
+    // ///```no_run 
+    // ///     let mcl = mcl_rs::MclEnvBuilder::new().initialize();
+    // ///     mcl.load_prog("my_prog",mcl_rs::PrgType::Src);  
+    // /// 
+    // ///     let data = vec![0; 4];
+    // ///     let pes: [u64; 3] = [1, 1, 1];
+    // ///     let hdl =  mcl.task("my_kernel", 1)
+    // ///                 .arg(mcl_rs::TaskArg::input_slice(&data).write_only(true))      
+    // ///                 .exec(pes);
+    // ///     mcl.wait_all();
+    // ///```
+    // pub fn wait_all(&self) {
+    //     low_level::wait_all()
         
-    }
+    // }
 
 }
 

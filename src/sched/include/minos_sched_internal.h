@@ -4,7 +4,6 @@
 #include <minos.h>
 #include <minos_internal.h>
 
-#include <minos_sched.h>
 
 #include <utlist.h>
 #include <mem_list.h>

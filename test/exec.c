@@ -119,7 +119,7 @@ int main(int argc, char **argv) {
             goto err;
         }
 
-        if (mcl_exec(hdls[i], pes, NULL, MCL_TASK_CPU)) {
+        if (mcl_exec(hdls[i], pes, NULL, MCL_TASK_ANY)) {
             printf("Error executing task %" PRIu64 ".", i);
             goto err;
         }
@@ -175,7 +175,7 @@ int main(int argc, char **argv) {
             goto err;
         }
 
-        if (mcl_exec(hdls[i], pes, NULL, MCL_TASK_CPU)) {
+        if (mcl_exec(hdls[i], pes, NULL, MCL_TASK_ANY)) {
             printf("Error executing task %" PRIu64 ".", i);
             goto err;
         }

@@ -119,3 +119,9 @@ config.*
 **/Makefile
 test/*.log
 test/*.trs
+
+/deps-install
+/install
+.vscode
+/mcl-0.*
+**/target

@@ -1,6 +1,7 @@
 use libmcl_sys::*;
 use crate::low_level;
 use crate::device::DevType;
+use crate::registered_buffer::RegisteredBuffer;
 
 use bitflags::bitflags;
 
@@ -41,7 +42,10 @@ unsafe impl Sync for Task<'_> {}
 
 /// Represents an incomplete MCL task whose kernel has been set but the arguments and target device are missing 
 pub struct Task<'a> {
-    args: Vec<TaskArg<'a>>,
+    // we want to stare the actual reference to the original argument so we can track lifetimes appropriately
+    // this also will allow us to protect agains the same argument being used as an output simulataneous
+    // aka this prevents us from doing dirty C-memory things :)
+    args: Vec<TaskArgOrRegBuf<'a>>, 
     curr_arg: usize,
     les: Option<[u64; 3]>,
     dev: DevType,
@@ -89,7 +93,7 @@ impl <'a>  Task<'a> {
             TaskArgData::Local(x) => low_level::task_set_local(self.c_handle, self.curr_arg as u64, *x, arg.flags),
             TaskArgData::Empty => panic!("cannot have an empty arg"),
         }
-        self.args[self.curr_arg]=arg;
+        self.args[self.curr_arg]=TaskArgOrRegBuf::TaskArg(arg);
         self.curr_arg += 1;
 
         self
@@ -114,15 +118,9 @@ impl <'a>  Task<'a> {
     ///     futures::executor::block_on(mcl_future);
     /// 
     ///``` 
-    pub fn arg_buffer(mut self, arg: TaskArg<'a>) -> Self { //TODO fix the offset issue
-            
-        // match &arg.data {
-        //     TaskArgData::Scalar(_x) => panic!("Scalar inputs are not valid buffers"),
-        //     TaskArgData::Buffer(x) => low_level::task_set_arg_buffer(self.c_handle, self.curr_arg as u64, x, 0, arg.flags),
-        //     TaskArgData::Local(_x) => panic!("invalid Task Argument Type"),
-        //     TaskArgData::Empty => panic!("cannot have an empty arg"),
-        // }
-        self.args[self.curr_arg]=arg;
+    pub fn arg_buffer(mut self, buffer: RegisteredBuffer<'a>) -> Self { //TODO fix the offset issue
+        low_level::task_set_arg_registered_buffer(self.c_handle, self.curr_arg as u64, &buffer);
+        self.args[self.curr_arg]=TaskArgOrRegBuf::RegBuf(buffer.clone());
         self.curr_arg += 1;
 
         self
@@ -215,6 +213,13 @@ impl <'a>  Task<'a> {
     ///``` 
     pub async fn exec(mut self, ref mut pes: [u64; 3]) {
         assert_eq!(self.curr_arg, self.args.len());
+        for arg in &self.args {
+            match arg {
+                TaskArgOrRegBuf::RegBuf(buf) => buf.alloc().await,
+                TaskArgOrRegBuf::TaskArg(_) => {},
+            }
+        }
+
         low_level::exec(self.c_handle, pes, &mut self.les, self.dev);
 
         while low_level::test(self.c_handle) != ReqStatus::Completed {
@@ -259,11 +264,35 @@ impl Drop for Task<'_>  {
 }
 
 #[derive(Clone)]
+enum TaskArgOrRegBuf<'a>{
+    TaskArg(TaskArg<'a>),
+    RegBuf(RegisteredBuffer<'a>),
+}
+
+impl <'a> Default for TaskArgOrRegBuf<'a>{
+    fn  default() -> Self {
+        TaskArgOrRegBuf::TaskArg(Default::default())
+    }
+}
+
+
+#[derive(Clone)]
 pub(crate) enum TaskArgData<'a> {
     Scalar(&'a [u8]),
     Buffer(&'a [u8]),
     Local(usize),
     Empty,
+}
+
+impl <'a> TaskArgData<'a> {
+    pub(crate) fn len (&self) -> usize {
+        match self {
+            TaskArgData::Scalar(x) => x.len(),
+            TaskArgData::Buffer(x) => x.len(),
+            TaskArgData::Local(x) => *x,
+            TaskArgData::Empty => 0,
+        }
+    }
 }
 
 /// Represents a data argument for an MCL task along with the use flags (e.g. input, output, access type etc.)
@@ -273,6 +302,7 @@ pub struct TaskArg<'a> {
 
     pub(crate) data: TaskArgData<'a>,
     pub(crate) flags: ArgOpt,
+    pub(crate) orig_type_size: usize,
 }
 
 impl <'a> Default for TaskArg<'a>{
@@ -280,6 +310,7 @@ impl <'a> Default for TaskArg<'a>{
         TaskArg{
             data: TaskArgData::Empty,
             flags: ArgOpt::EMPTY,
+            orig_type_size: 0,
         }
     }
 }
@@ -290,8 +321,6 @@ fn to_u8_slice<T>(data: &[T]) -> &[u8] {
 }
 
 impl<'a> TaskArg<'a> {
-
-
     /// Create a new task input argument from `slice` 
     /// 
     /// Returns a new TaskArg
@@ -318,6 +347,7 @@ impl<'a> TaskArg<'a> {
         TaskArg {
             data: TaskArgData::Buffer(to_u8_slice(slice)),
             flags: ArgOpt::INPUT | ArgOpt::BUFFER,
+            orig_type_size: std::mem::size_of::<T>(),
         }
     }
 
@@ -347,6 +377,7 @@ impl<'a> TaskArg<'a> {
         TaskArg {
             data: TaskArgData::Scalar(to_u8_slice(std::slice::from_ref(scalar))),
             flags: ArgOpt::INPUT|ArgOpt::SCALAR,
+            orig_type_size: std::mem::size_of::<T>(),
         }
     }
     /// Requests an allocation of `num_bytes` 
@@ -375,6 +406,7 @@ impl<'a> TaskArg<'a> {
         TaskArg{
             data: TaskArgData::Local(num_bytes),
             flags: ArgOpt::LOCAL,
+            orig_type_size: 1,
         }
     }
 
@@ -399,10 +431,11 @@ impl<'a> TaskArg<'a> {
     ///                 .exec(pes);
     ///     futures::executor::block_on(mcl_future);
     ///``` 
-    pub fn output_slice<T>(slice: &'a [T]) -> Self {
+    pub fn output_slice<T>(slice: &'a mut [T]) -> Self {
         TaskArg {
             data: TaskArgData::Buffer(to_u8_slice(slice)),
             flags: ArgOpt::OUTPUT |ArgOpt::BUFFER,
+            orig_type_size: std::mem::size_of::<T>(),
         }
     }
 
@@ -432,6 +465,7 @@ impl<'a> TaskArg<'a> {
         TaskArg {
             data: TaskArgData::Buffer(to_u8_slice(std::slice::from_ref(scalar))),
             flags: ArgOpt::OUTPUT |ArgOpt::BUFFER, 
+            orig_type_size: std::mem::size_of::<T>(),
         }
     }
 
@@ -459,6 +493,7 @@ impl<'a> TaskArg<'a> {
         TaskArg {
             data: TaskArgData::Buffer(to_u8_slice(slice)),
             flags: ArgOpt::OUTPUT | ArgOpt::INPUT | ArgOpt::BUFFER,
+            orig_type_size: std::mem::size_of::<T>(),
         }
     }
 
@@ -487,6 +522,7 @@ impl<'a> TaskArg<'a> {
         TaskArg {
             data: TaskArgData::Buffer(to_u8_slice(std::slice::from_ref(scalar))),
             flags: ArgOpt::OUTPUT | ArgOpt::INPUT | ArgOpt::BUFFER,
+            orig_type_size: std::mem::size_of::<T>(),
         }
     }
 
@@ -504,12 +540,17 @@ impl<'a> TaskArg<'a> {
     ///     let les: [u64; 3] = [1, 1, 1];
     ///     let pes: [u64; 3] = [1, 1, 1];
     ///     let mcl_future = mcl.task("my_kernel", 1)
-    ///                 .arg(mcl_rs::TaskArg::input_slice(&data).resident())
+    ///                 .arg(mcl_rs::TaskArg::input_slice(&data).resident(true))
     ///                 .exec(pes);
     ///     futures::executor::block_on(mcl_future);
     ///``` 
-    pub fn resident(mut self) -> Self {
-        self.flags = self.flags | ArgOpt::RESIDENT;
+    pub fn resident(mut self, val: bool) -> Self {
+        if val {
+            self.flags = self.flags | ArgOpt::RESIDENT;
+        }
+        else {
+            self.flags = self.flags & !ArgOpt::RESIDENT;
+        }
         return self;
     }
 
@@ -526,12 +567,17 @@ impl<'a> TaskArg<'a> {
     ///     let les: [u64; 3] = [1, 1, 1];
     ///     let pes: [u64; 3] = [1, 1, 1];
     ///     let mcl_future = mcl.task("my_kernel", 1)
-    ///                 .arg(mcl_rs::TaskArg::input_slice(&data).dynamic())
+    ///                 .arg(mcl_rs::TaskArg::input_slice(&data).dynamic(true))
     ///                 .exec(pes);
     ///     futures::executor::block_on(mcl_future);
     ///``` 
-    pub fn dynamic(mut self) -> Self {
-        self.flags = self.flags | ArgOpt::DYNAMIC;
+    pub fn dynamic(mut self, val: bool) -> Self {
+        if val {
+            self.flags = self.flags | ArgOpt::DYNAMIC;
+        }
+        else {
+            self.flags = self.flags & !ArgOpt::DYNAMIC;
+        }
         return self;
     }
 
@@ -549,12 +595,17 @@ impl<'a> TaskArg<'a> {
     ///     let les: [u64; 3] = [1, 1, 1];
     ///     let pes: [u64; 3] = [1, 1, 1];
     ///     let mcl_future = mcl.task("my_kernel", 1)
-    ///                 .arg(mcl_rs::TaskArg::input_slice(&data).done())
+    ///                 .arg(mcl_rs::TaskArg::input_slice(&data).done(true))
     ///                 .exec(pes);
     ///     futures::executor::block_on(mcl_future);
     ///```  
-    pub fn done(mut self) -> Self {
-        self.flags = self.flags | ArgOpt::DONE;
+    pub fn done(mut self, val: bool) -> Self {
+        if val {
+            self.flags = self.flags | ArgOpt::DONE;
+        }
+        else {
+            self.flags = self.flags & !ArgOpt::DONE;
+        }
         return self;
     }
 
@@ -572,12 +623,17 @@ impl<'a> TaskArg<'a> {
     ///     let les: [u64; 3] = [1, 1, 1];
     ///     let pes: [u64; 3] = [1, 1, 1];
     ///     let mcl_future = mcl.task("my_kernel", 1)
-    ///                 .arg(mcl_rs::TaskArg::input_slice(&data).invalid())
+    ///                 .arg(mcl_rs::TaskArg::input_slice(&data).invalid(true))
     ///                 .exec(pes);
     ///     futures::executor::block_on(mcl_future);
     ///```  
-    pub fn invalid(mut self) -> Self {
-        self.flags = self.flags | ArgOpt::INVALID;
+    pub fn invalid(mut self, val: bool) -> Self {
+        if val {
+            self.flags = self.flags | ArgOpt::INVALID;
+        }
+        else {
+            self.flags = self.flags & !ArgOpt::INVALID;
+        }
         return self;
     }
 
@@ -595,12 +651,17 @@ impl<'a> TaskArg<'a> {
     ///     let les: [u64; 3] = [1, 1, 1];
     ///     let pes: [u64; 3] = [1, 1, 1];
     ///     let mcl_future = mcl.task("my_kernel", 1)
-    ///                 .arg(mcl_rs::TaskArg::input_slice(&data).read_only())
+    ///                 .arg(mcl_rs::TaskArg::input_slice(&data).read_only(true))
     ///                 .exec(pes);
     ///     futures::executor::block_on(mcl_future);
     ///```  
-    pub fn read_only(mut self) -> Self {
-        self.flags = self.flags | ArgOpt::RDONLY;
+    pub fn read_only(mut self, val: bool) -> Self {
+        if val {
+            self.flags = self.flags | ArgOpt::RDONLY;
+        }
+        else {
+            self.flags = self.flags & !ArgOpt::RDONLY;
+        }
         return self;
     }
 
@@ -618,12 +679,18 @@ impl<'a> TaskArg<'a> {
     ///     let les: [u64; 3] = [1, 1, 1];
     ///     let pes: [u64; 3] = [1, 1, 1];
     ///     let mcl_future = mcl.task("my_kernel", 1)
-    ///                 .arg(mcl_rs::TaskArg::input_slice(&data).write_only())
+    ///                 .arg(mcl_rs::TaskArg::input_slice(&data).write_only(true))
     ///                 .exec(pes);
     ///     futures::executor::block_on(mcl_future);
     ///```
-    pub fn write_only(mut self) -> Self {
-        self.flags = self.flags | ArgOpt::WRONLY;
+    pub fn write_only(mut self, val: bool) -> Self {
+        
+        if val {
+            self.flags = self.flags | ArgOpt::WRONLY;
+        }
+        else {
+            self.flags = self.flags & !ArgOpt::WRONLY;
+        }
         return self;
     }
 

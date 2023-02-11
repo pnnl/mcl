@@ -20,7 +20,6 @@ mod task;
 pub use task::*;
 mod transfer;
 pub use transfer::*;
-
-use paste::paste;
-use std::ffi::c_void;
+mod registered_buffer;
+pub use registered_buffer::*;
 

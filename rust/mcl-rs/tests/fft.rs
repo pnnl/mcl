@@ -56,8 +56,8 @@ async fn fft_mcl_async(env: &mcl_rs::Mcl, sources: &mut Vec<Vec<Complex<f32>>>, 
 
 async fn fft_kernel(env: &mcl_rs::Mcl, s: &Vec<Complex<f32>>, r: &mut Vec<Complex<f32>>, p: &i32, pes: [u64;3]) {
     env.task( "fftRadix2Kernel", 3)
-            .arg(mcl_rs::TaskArg::input_slice(s).resident().dynamic())
-            .arg(mcl_rs::TaskArg::input_slice(r).resident().dynamic())
+            .arg(mcl_rs::TaskArg::input_slice(s).resident(true).dynamic(true))
+            .arg(mcl_rs::TaskArg::input_slice(r).resident(true).dynamic(true))
             .arg(mcl_rs::TaskArg::input_scalar(p))
             .dev(mcl_rs::DevType::ANY)
             .exec(pes).await;
@@ -65,8 +65,8 @@ async fn fft_kernel(env: &mcl_rs::Mcl, s: &Vec<Complex<f32>>, r: &mut Vec<Comple
 
 async fn fft_last(env: &mcl_rs::Mcl, s: &mut Vec<Complex<f32>>, r: &mut Vec<Complex<f32>>, p: &i32, pes: [u64;3]){
     env.task( "fftRadix2Kernel", 3)
-            .arg(mcl_rs::TaskArg::input_slice(s).resident().dynamic().done())
-            .arg(mcl_rs::TaskArg::inout_slice(r).resident().dynamic().done())
+            .arg(mcl_rs::TaskArg::input_slice(s).resident(true).dynamic(true).done(true))
+            .arg(mcl_rs::TaskArg::inout_slice(r).resident(true).dynamic(true).done(true))
             .arg(mcl_rs::TaskArg::input_scalar(p))
             .dev(mcl_rs::DevType::ANY)
             .exec(pes).await;
