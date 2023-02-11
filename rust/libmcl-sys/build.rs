@@ -76,14 +76,15 @@ fn main() {
     #[cfg(not(target_os="macos"))]
     if ocl_incpath.is_empty() || ocl_libpath.is_empty() || cfg!(feature="shared_mem"){
         
-        #[cfg_attr(not(feature="install_pocl"),cfg(not(feature="shared_mem")))]
+        // #[cfg_attr(all(cfg(not(feature="install_pocl"),cfg(not(feature="shared_mem")))))]
+        #[cfg(all(not(feature="install_pocl"),not(feature="shared_mem")))]
         panic!("Build Error. Please set the paths to OpenCL: env variables OCL_PATH_INC (current={}) and OCL_PATH_LIB (current={}). 
                 Alternatively, use the 'install_pocl' feature to download and build the open source POCL (http://portablecl.org/)  OpenCL implentation. Note,
                 this is not a Rust Crate so an internet connection is required as we will pull the source using git",ocl_incpath,ocl_libpath);
 
         #[allow(unreachable_code)]
         {
-            #[cfg_attr(not(feature="install_pocl"),cfg(feature="shared_mem"))]
+            #[cfg(all(not(feature="install_pocl"),feature="shared_mem"))]
             println!("cargo:warning=The shared_mem feature is enabled, the functionality currently requires a patched version of POCL (http://portablecl.org/) to operate.We will download and build this version automatically for you now (Internet connection required). To suppress this warning please add the 'install_pocl' feature flog");
             
             #[allow(unreachable_code)]
@@ -92,6 +93,10 @@ fn main() {
                 // Command::new("cp").args(&["-f", "mcl/scripts/get-pocl-shared-mem.sh", &pocl_dst.to_string_lossy()])
                 //     .status().unwrap();
                 if !pocl_dst.exists(){
+                    std::fs::create_dir_all(&pocl_dst).unwrap();
+                }
+                else {
+                    std::fs::remove_dir_all(&pocl_dst).unwrap();
                     std::fs::create_dir_all(&pocl_dst).unwrap();
                 }
                 Command::new("cp").args(&["-f", "mcl/patches/POCL-Shared-Mem.patch", &pocl_dst.to_string_lossy()])

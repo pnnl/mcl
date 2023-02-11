@@ -23,6 +23,7 @@ cmake = "0.1.49"
 
 [features]
 shared_mem = []
+install_pocl = []
 docs-rs = []
 
 
