@@ -1,6 +1,7 @@
 extern crate bindgen;
 
 use autotools;
+use cmake;
 use std::env;
 use std::path::PathBuf;
 use std::process::Command;
@@ -73,8 +74,53 @@ fn main() {
     }
 
     #[cfg(not(target_os="macos"))]
-    if ocl_incpath.is_empty() || ocl_libpath.is_empty() {
-        panic!("Build Error. Please set the paths to OpenCL: env variables OCL_PATH_INC (current={}) and OCL_PATH_LIB (current={}).",ocl_incpath,ocl_libpath);
+    if ocl_incpath.is_empty() || ocl_libpath.is_empty() || cfg!(feature="shared_mem"){
+        
+        #[cfg_attr(not(feature="install_pocl"),cfg(not(feature="shared_mem")))]
+        panic!("Build Error. Please set the paths to OpenCL: env variables OCL_PATH_INC (current={}) and OCL_PATH_LIB (current={}). 
+                Alternatively, use the 'install_pocl' feature to download and build the open source POCL (http://portablecl.org/)  OpenCL implentation. Note,
+                this is not a Rust Crate so an internet connection is required as we will pull the source using git",ocl_incpath,ocl_libpath);
+
+        #[allow(unreachable_code)]
+        {
+            #[cfg_attr(not(feature="install_pocl"),cfg(feature="shared_mem"))]
+            println!("cargo:warning=The shared_mem feature is enabled, the functionality currently requires a patched version of POCL (http://portablecl.org/) to operate.We will download and build this version automatically for you now (Internet connection required). To suppress this warning please add the 'install_pocl' feature flog");
+            
+            #[allow(unreachable_code)]
+            {
+                let pocl_dst = out_path.clone().join("pocl/");
+                // Command::new("cp").args(&["-f", "mcl/scripts/get-pocl-shared-mem.sh", &pocl_dst.to_string_lossy()])
+                //     .status().unwrap();
+                if !pocl_dst.exists(){
+                    std::fs::create_dir_all(&pocl_dst).unwrap();
+                }
+                Command::new("cp").args(&["-f", "mcl/patches/POCL-Shared-Mem.patch", &pocl_dst.to_string_lossy()])
+                    .status().unwrap();
+                Command::new("git").current_dir(&pocl_dst).args(&["clone", "git@github.com:pocl/pocl.git"]).status().unwrap();
+                Command::new("git").current_dir(pocl_dst.clone().join("pocl")).args(&["checkout", "release_1_8"]).status().unwrap();
+                Command::new("git").current_dir(pocl_dst.clone().join("pocl")).args(&["apply", "../POCL-Shared-Mem.patch"]).status().unwrap();
+                let pocl_src = pocl_dst.clone().join("pocl");
+                // if !pocl_build.exists(){
+                //     std::fs::create_dir_all(&pocl_build).unwrap();
+                // }
+
+                let llvm_config = match env::var("LLVM_CONFIG_PATH") {
+                    Ok(val) => val,
+                    Err(_e) => "".to_string(),
+                };
+                println!("llvm_config {:?}",env::var("LLVM_CONFIG_PATH"));
+
+                let pocl = if llvm_config.is_empty(){
+                    cmake::Config::new(pocl_src).build()
+                }
+                else {
+                    println!("here {llvm_config}");
+                    cmake::Config::new(pocl_src).configure_arg(format!("-DWITH_LLVM_CONFIG={llvm_config}")).build()
+                };
+                ocl_incpath = pocl.clone().join("include").to_string_lossy().to_string();
+                ocl_libpath = pocl.clone().join("lib").to_string_lossy().to_string();
+            }
+        }
     }
 
 
@@ -114,18 +160,11 @@ fn main() {
             let libatomic_lib = libatomic_build.clone().join("include");
 
             let uthash_inc =  mcl_dest.clone().join("deps/uthash/include");
-
-            // let nbhash = mcl_dest.clone().join("src/common/nbhashmap");
-            // let _nbhash_build = cc::Build::new()
-            // .file(nbhash.join("nbhashmap.c"))
-            // .include(libatomic_inc.clone())
-            // .flag("-std=c11")
-            // .compile("nbhashmap.o");
-
             
             let shared_mem = if cfg!(feature="shared_mem") {
                 std::fs::File::create(shm_path).unwrap();
-                "--enable-shared-memory --enable-pocl-extensions"
+                // "--enable-shared-memory --enable-pocl-extensions"
+                ""
             }
             else {
                 ""

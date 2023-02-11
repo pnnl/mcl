@@ -11,5 +11,6 @@ keywords = ["heterogeneous","gpu","fpga","hpc","runtime"]
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-libmcl-sys = "0.1.2-rc"
+#libmcl-sys = "0.1.2-rc"
+libmcl-sys = {version = "0.1.2-rc", path = "../libmcl-sys"}
 clap = {version = "4.0.29", features = ["derive"] }
