@@ -159,14 +159,27 @@ fn main() {
             shm_path.exists() //check if previously compiled with shared_mem
         };
 
+        let debug_path = mcl_dest.clone().join("mcl_debug_enabled");
+        
+        let  debug_changed = if cfg!(feature="mcl_debug") {
+            !debug_path.exists() // shared_mem feature enabled but not previously compiled with it
+        }
+        else{ // shared_mem feature disabled
+            debug_path.exists() //check if previously compiled with shared_mem
+        };
+
         let build = !mcl_dest.exists() | 
                         !mcl_dest.clone().join("lib/libmcl.a").exists() | 
                         !mcl_dest.clone().join("lib/libmcl_sched.a").exists() | 
                         !mcl_dest.clone().join("include/minos.h").exists() | 
                         !mcl_dest.clone().join("include/minos_sched.h").exists();
 
-        if build || shm_changed  {
+        if build || shm_changed || debug_changed {
             if shm_path.exists(){
+                std::fs::remove_file(shm_path.clone()).unwrap();
+            }
+
+            if debug_path.exists(){
                 std::fs::remove_file(shm_path.clone()).unwrap();
             }
             // println!("cargo:warning=copying mcl");
@@ -184,14 +197,13 @@ fn main() {
 
             let uthash_inc =  mcl_dest.clone().join("deps/uthash/include");
             
-            let shared_mem = if cfg!(feature="shared_mem") {
+            if cfg!(feature="shared_mem") {
                 std::fs::File::create(shm_path).unwrap();
-                // "--enable-shared-memory --enable-pocl-extensions"
-                ""
             }
-            else {
-                ""
-            };
+
+            if cfg!(feature="mcl_debug") {
+                std::fs::File::create(debug_path).unwrap();
+            }
 
             // let  (llvm_cflags,llvm_libs) = if cfg!(any(feature="install_pocl",feature="shared_mem")){
             //     let llvm_config = match env::var("LLVM_CONFIG_PATH") {
@@ -223,14 +235,16 @@ fn main() {
 
             // println!("cargo:warning=llvm_libs {llvm_libs}");
 
-            let mcl_build = autotools::Config::new( mcl_dest)
-            .reconf("-ivfWnone")
-            .cflag(format!("{} -I{} -I{} -I{ocl_incpath}",shared_mem,uthash_inc.display(),libatomic_inc.display()))
-            .ldflag(format!("-L{} -L{ocl_libpath}",libatomic_lib.display()))
-            .enable("opencl2",Some("no"))
-            .enable("debug", None)
-            .insource(true)
-            .build();
+            let mut mcl_config = autotools::Config::new( mcl_dest);
+            mcl_config.reconf("-ivfWnone")
+                      .cflag(format!("-I{} -I{} -I{ocl_incpath}",uthash_inc.display(),libatomic_inc.display()))
+                      .ldflag(format!("-L{} -L{ocl_libpath}",libatomic_lib.display()))
+                      .insource(true)
+                      .enable("opencl2",Some("no"));
+            #[cfg(feature="mcl_debug")]
+            mcl_config.enable("debug", None);
+            
+            let mcl_build = mcl_config.build();
             mcl_path = mcl_build.clone().to_string_lossy().to_string();
             
         }
