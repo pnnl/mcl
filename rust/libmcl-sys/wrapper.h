@@ -1,2 +1,3 @@
-#include <minos_sched.h>
 #include <minos.h>
+#include <minos_sched.h>
+

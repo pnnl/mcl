@@ -18,4 +18,9 @@ clap = {version = "4.0.29", features = ["derive"] }
 [features]
 shared_mem=["libmcl-sys/shared_mem"]
 docs-rs = ["libmcl-sys/docs-rs"]
-install_pocl = ["libmcl-sys/install_pocl"]
+
+[profile.release]
+opt-level=3
+lto=true
+codegen-units=1
+rpath = true
