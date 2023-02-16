@@ -1419,6 +1419,18 @@ static inline int cli_exec_am(struct worker_struct *desc, struct mcl_msg_struct 
 #endif
         {
             Dprintf("\tEnqueueing read buffer for argument %d.", i);
+            // POCL 1.8 wont let us do t->args[i].addr + t->args[i].offset to point to the proper location in host memory,
+            // so unforunately we need to copy the current data int->args[i].addr[0..t->args[i].size] to a temp buffer,
+            // do the cl read, copy that new data to the appropriate offset, then copy the original data back.
+            uint8_t *temp == NULL;
+            if (t->args[i].offset != 0) {
+                temp = malloc(t->args[i].size);
+                if (temp == NULL){
+                    retcode = MCL_ERR_MEMCOPY;
+                    goto err_kernel;
+                }
+                memcpy(temp,t->args[i].addr,t->args[i].size);
+            }
             ret = clEnqueueReadBuffer(queue, ctx->buffers[i],
                                       CL_FALSE, 0, t->args[i].size,
                                       t->args[i].addr + t->args[i].offset, 0,
@@ -1428,6 +1440,13 @@ static inline int cli_exec_am(struct worker_struct *desc, struct mcl_msg_struct 
                 if (h->cmd == MSG_CMD_TRAN)
                     goto err_setup;
                 goto err_kernel;
+            }
+            if (t->args[i].offset != 0) {
+                memcpy(t->args[i].addr + t->args[i].offset,t->args[i].addr,t->args[i].size);
+                memcpy(t->args[i].addr, temp,t->args[i].size);
+                if (temp!=NULL){
+                 free(temp);
+                }
             }
             stats_add(r->worker->bytes_transfered, (t->args[i].size));
             stats_inc(r->worker->n_transfers);
