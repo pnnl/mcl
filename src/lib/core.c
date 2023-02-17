@@ -1422,7 +1422,7 @@ static inline int cli_exec_am(struct worker_struct *desc, struct mcl_msg_struct 
             // POCL 1.8 wont let us do t->args[i].addr + t->args[i].offset to point to the proper location in host memory,
             // so unforunately we need to copy the current data int->args[i].addr[0..t->args[i].size] to a temp buffer,
             // do the cl read, copy that new data to the appropriate offset, then copy the original data back.
-            uint8_t *temp == NULL;
+            uint8_t *temp = NULL;
             if (t->args[i].offset != 0) {
                 temp = malloc(t->args[i].size);
                 if (temp == NULL){
