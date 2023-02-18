@@ -12,7 +12,7 @@ fn gemm_seq(a: &Vec::<i32>, b: &Vec::<i32>, c: &mut Vec::<i32>, n: usize) {
     }
 }
 
-async fn gemm_mcl(env: &mcl_rs::Mcl, a: &Vec::<i32>, b: &Vec::<i32>, cs: &mut Vec<Vec::<i32>>, n: &usize, num_tiles: usize, sync: &bool) {
+async fn gemm_mcl(env: &mcl_rs::Mcl, a: &Vec::<i32>, b: &Vec::<i32>, cs: &mut Vec<Vec::<i32>>, n: &usize, sync: &bool) {
 
     let mut hdls = Vec::new();
 
@@ -64,8 +64,7 @@ fn tiled_gemm() {
     let workers = 2;
     let n  = 128;
     let nn = n * n;
-    let mut reps = REPS;
-    let num_tiles = 4;
+    let reps = REPS;
     // reps += 10;
     let sync = true;
     
@@ -78,8 +77,8 @@ fn tiled_gemm() {
     let mut rng = rand::thread_rng();
 
     // Generate a and b matrices of size NxN and initialize with random numbers in [0, 100)
-    let a: Vec::<i32> = (0..nn).enumerate().map(|(i,_)| { ((i *2) / nn) as i32 + 1/*rng.gen_range(0..100)*/}).collect();
-    let b: Vec::<i32> = (0..nn).enumerate().map(|(i,_)| { ((i *2) / nn) as i32 + 1/*rng.gen_range(0..100)*/}).collect();
+    let a: Vec::<i32> = (0..nn).enumerate().map(|(_,_)| { rng.gen_range(0..100)}).collect();
+    let b: Vec::<i32> = (0..nn).enumerate().map(|(_,_)| { rng.gen_range(0..100)}).collect();
 
     // Allocate the c matrix that will hold the results.
     let mut cs: Vec::<Vec::<i32>> = vec![vec![0; nn];reps]; //we need a buffer for each result 
@@ -93,7 +92,7 @@ fn tiled_gemm() {
 
     println!("Sync mcl gemm");
     let start = std::time::Instant::now();
-    futures::executor::block_on(gemm_mcl(&env, &a, &b, &mut cs, &n, num_tiles, &sync));
+    futures::executor::block_on(gemm_mcl(&env, &a, &b, &mut cs, &n, &sync));
     let sync_time = start.elapsed().as_secs_f32();
     // println!("{:?}",cs);
     for c in cs {
@@ -110,7 +109,7 @@ fn tiled_gemm() {
 
     println!("Async mcl gemm");
     let start = std::time::Instant::now();
-    futures::executor::block_on(gemm_mcl(&env, & a, & b, &mut cs, &n, num_tiles, &sync));
+    futures::executor::block_on(gemm_mcl(&env, & a, & b, &mut cs, &n, &sync));
     let async_time = start.elapsed().as_secs_f32();
     for c in cs {
         assert_eq!(c_seq, c);

@@ -12,7 +12,7 @@ fn gemm_seq(a: &Vec::<i32>, b: &Vec::<i32>, c: &mut Vec::<i32>, n: usize) {
     }
 }
 
-async fn gemm_mcl(env: &mcl_rs::Mcl, a: &Vec::<i32>, b: &Vec::<i32>, cs: &mut Vec<Vec::<i32>>, n: &usize, reps: usize, sync: &bool, test_type: u32) {
+async fn gemm_mcl(env: &mcl_rs::Mcl, a: &Vec::<i32>, b: &Vec::<i32>, cs: &mut Vec<Vec::<i32>>, n: &usize, sync: &bool, test_type: u32) {
 
     let mut hdls = Vec::new();
 
@@ -55,7 +55,7 @@ async fn gemm_mcl(env: &mcl_rs::Mcl, a: &Vec::<i32>, b: &Vec::<i32>, cs: &mut Ve
 
 
 
-// #[test]
+#[test]
 fn resdata() {
 
     let env = mcl_rs::MclEnvBuilder::new()
@@ -82,25 +82,25 @@ fn resdata() {
     gemm_seq(&a, &b, &mut c_seq, n);
 
     // Test 0
-    futures::executor::block_on(gemm_mcl(&env, &a, &b, &mut cs, &n, reps, &sync, 3));
+    futures::executor::block_on(gemm_mcl(&env, &a, &b, &mut cs, &n, &sync, 3));
 
     assert_eq!(c_seq, cs[0]);
 
     // Test 1
     let mut cs = vec![vec![0; nn];reps];
-    futures::executor::block_on(gemm_mcl(&env, &a, &b, &mut cs, &n, reps, &sync, 1));
+    futures::executor::block_on(gemm_mcl(&env, &a, &b, &mut cs, &n, &sync, 1));
     
     assert_eq!(c_seq, cs[0]);
     
     // Test 2
     let mut cs = vec![vec![0; nn];reps];
-    futures::executor::block_on(gemm_mcl(&env, &a, &b, &mut cs, &n, reps, &sync, 2));
+    futures::executor::block_on(gemm_mcl(&env, &a, &b, &mut cs, &n, &sync, 2));
 
     assert_eq!(c_seq, cs[0]);
 
     // Test 3
     let mut cs = vec![vec![0; nn];reps];
-    futures::executor::block_on(gemm_mcl(&env, &a, &b, &mut cs, &n, reps, &sync, 3));
+    futures::executor::block_on(gemm_mcl(&env, &a, &b, &mut cs, &n, &sync, 3));
 
     assert_eq!(c_seq, cs[0]);
 }

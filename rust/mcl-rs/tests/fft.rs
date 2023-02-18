@@ -85,7 +85,6 @@ fn fft() {
     
     let workers = 1;
     let reps = 10;
-    let dft_size  = 2;
     let env = mcl_rs::MclEnvBuilder::new()
         .num_workers(workers)
         .initialize();
@@ -97,15 +96,15 @@ fn fft() {
         assert!(dft_size > 0 && (dft_size & (dft_size -1) == 0), "FFT tests only works with powers of 2 Vec sizes");
 
         
-        let mut rng = rand::thread_rng();
+        let  mut rng = rand::thread_rng();
 
         let mut reference = vec![Default::default();dft_size];
         for i in 0..dft_size/2{
             reference[i]= Complex{
-                // x: rng.gen::<f32>(),
-                // y: rng.gen::<f32>(),
-                re: (i+1) as f32/((dft_size*2)/3)as f32 * 2.0 -1.0,
-                im: (i+1) as f32/((dft_size*2)/3)as f32 * 2.0 -1.0,
+                re: rng.gen::<f32>(),
+                im: rng.gen::<f32>(),
+                // re: (i+1) as f32/((dft_size*2)/3)as f32 * 2.0 -1.0,
+                // im: (i+1) as f32/((dft_size*2)/3)as f32 * 2.0 -1.0,
             };
             reference[i + dft_size/2] = reference[i];
         }
