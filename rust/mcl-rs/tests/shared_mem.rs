@@ -1,6 +1,10 @@
+#[cfg(feature = "shared_mem")]
 use fork::{fork, Fork};
 
+#[cfg(feature = "shared_mem")]
 mod shm;
+
+#[cfg(feature = "shared_mem")]
 #[test]
 fn shared_mem() {
     let num_elems = 256;
