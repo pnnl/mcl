@@ -1,10 +1,11 @@
 use crate::low_level;
+use crate::low_level::{TaskOpt,ArgOpt};
 
 // use crate::device::DevInfo;
 use crate::prog::{Prog,PrgType};
-use crate::task::{Task,TaskArg};
+use crate::task::{Task,TaskArg,SharedTask};
 use crate::transfer::{Transfer};
-use crate::registered_buffer::{RegisteredBuffer};
+use crate::registered_buffer::{RegisteredBuffer,SharedMemBuffer};
 
 use bitflags::bitflags;
 
@@ -193,7 +194,41 @@ impl Mcl{
     ///     let t = mcl.task("my_kernel", 2);
     ///```
     pub fn task<'a>(&self, kernel_name_cl: &str, nargs: usize) -> Task<'a>{
-        Task::new( kernel_name_cl, nargs)
+        Task::new( kernel_name_cl, nargs,TaskOpt::EMPTY)
+    }
+
+    /// Creates a new mcl task from the given kernel.
+    ///
+    /// This kernel must exist in a previously loaded [Prog][crate::prog::Prog].
+    /// 
+    /// Returns a new Task representing this kernel
+    /// # Examples
+    /// 
+    ///```no_run
+    ///     let mcl = mcl_rs::MclEnvBuilder::new().num_workers(10).initialize();
+    ///     mcl.load_prog("my_path", mcl_rs::PrgType::Src);
+    ///
+    ///     let t = mcl.shared_task("my_kernel", 2);
+    ///```
+    pub fn shared_task<'a>(&self, kernel_name_cl: &str, nargs: usize) -> Task<'a>{
+        Task::new( kernel_name_cl, nargs,TaskOpt::SHARED)
+    }
+
+     /// Creates a new mcl shared task from the given process id and unique task id.
+    ///
+    /// This task must have been created by process pid
+    /// # Examples
+    /// 
+    ///```no_run
+    ///     let mcl = mcl_rs::MclEnvBuilder::new().num_workers(10).initialize();
+    ///     mcl.load_prog("my_path", mcl_rs::PrgType::Src);
+    ///     let pid = 0; //user is required to set this approriately
+    ///     let task_id = 0; //user is required to set this approriately
+    ///
+    ///     let t = mcl.attach_shared_task(pid,task_id);
+    ///```
+    pub fn attach_shared_task(&self,pid: i32, task_id: u32) -> SharedTask {
+        SharedTask::new(pid,task_id)
     }
 
     /// Creates a new mcl transfer task with that will transfer `nargs` and suggest to the scheduler that `ncopies` should be created
@@ -209,8 +244,18 @@ impl Mcl{
     }
 
     pub fn register_buffer<'a>(&self,arg: TaskArg<'a>) -> RegisteredBuffer<'a>{
-        
         RegisteredBuffer::new(arg)
+    }
+
+    pub fn create_shared_buffer(&self,mut arg: TaskArg<'_>) -> SharedMemBuffer{
+        arg.flags |= ArgOpt::SHARED_MEM_NEW |  ArgOpt::SHARED_MEM_DEL_OLD |  ArgOpt::DYNAMIC |  ArgOpt::RESIDENT;
+        // println!("{:?}",arg.flags);
+        SharedMemBuffer::new(arg)
+    }
+
+    pub fn attach_shared_buffer(&self,mut arg: TaskArg<'_>) -> SharedMemBuffer{
+        arg.flags |= ArgOpt::DYNAMIC  |  ArgOpt::RESIDENT;
+        SharedMemBuffer::new(arg)
     }
 
 

@@ -16,7 +16,7 @@ rand = "0.8.3"
 
 [build-dependencies]
 bindgen = "0.59.2"
-autotools = "0.2.5"
+autotools = { path = "/home/frie869/src/autotools-rs" }
 cc = "1.0.77"
 glob = "0.3.1"
 #cmake = "0.1.49"
@@ -24,7 +24,7 @@ glob = "0.3.1"
 [features]
 shared_mem = []
 mcl_debug = []
-#install_pocl = []
+pocl_extensions = []
 docs-rs = []
 
 [profile.release]

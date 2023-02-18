@@ -190,6 +190,7 @@ fn main() {
             let libatomic_ops = mcl_dest.clone().join("deps/libatomic_ops");
             let libatomic_build = autotools::Config::new( libatomic_ops)
             .reconf("-ivfWnone")
+            .fast_build(true)
             .build();
             println!("libatomic_build {libatomic_build:?}");
             let libatomic_inc = libatomic_build.clone().join("include");
@@ -204,6 +205,15 @@ fn main() {
             if cfg!(feature="mcl_debug") {
                 std::fs::File::create(debug_path).unwrap();
             }
+
+            // println!("cargo:warning=llvm_libs {:?}",env::var("LLVM_CONFIG_PATH"));
+            let llvm_ldflags = match env::var("LLVM_CONFIG_PATH") {
+                Ok(llvm_config) => {
+                    String::from_utf8(Command::new(llvm_config.clone()).args(&["--ldflags"])
+                        .output().expect("failed to execute process").stdout).unwrap().trim().to_string()
+                },
+                Err(_e) => "".to_string(),
+            };
 
             // let  (llvm_cflags,llvm_libs) = if cfg!(any(feature="install_pocl",feature="shared_mem")){
             //     let llvm_config = match env::var("LLVM_CONFIG_PATH") {
@@ -233,19 +243,28 @@ fn main() {
             //     ("".to_string(),"".to_string())
             // };
 
-            // println!("cargo:warning=llvm_libs {llvm_libs}");
-
+            // println!("cargo:warning=llvm_libs {llvm_ldflags}");
+            let ldflags = format!("-L{} -L{ocl_libpath} {llvm_ldflags}",libatomic_lib.display());
+            // println!("cargo:warning=llvm_libs {ldflags}");
             let mut mcl_config = autotools::Config::new( mcl_dest);
             mcl_config.reconf("-ivfWnone")
                       .cflag(format!("-I{} -I{} -I{ocl_incpath}",uthash_inc.display(),libatomic_inc.display()))
-                      .ldflag(format!("-L{} -L{ocl_libpath}",libatomic_lib.display()))
+                      .ldflag(ldflags)
                       .insource(true)
                       .enable("opencl2",Some("no"));
             #[cfg(feature="mcl_debug")]
             mcl_config.enable("debug", None);
+            #[cfg(feature="shared_mem")]
+            mcl_config.enable("shared-memory", None);
+            #[cfg(feature="pocl_extensions")]
+            mcl_config.enable("pocl-extensions", None);
             
-            let mcl_build = mcl_config.build();
-            mcl_path = mcl_build.clone().to_string_lossy().to_string();
+            let mcl_build = mcl_config.try_build();
+            
+            mcl_path = match mcl_build.clone(){
+                Ok(path) => path.to_string_lossy().to_string(),
+                Err(msg) => panic!("BUILD FAILED: This may be due to either your OpenCL or LLVM (you can set the LLVM_CONFIG_PATH to help produce the correct path ) paths not being approriately picked up -- {msg}"),
+            };
             
         }
         else {
@@ -307,6 +326,8 @@ fn main() {
     .allowlist_type("MCL_.*")
     .allowlist_type("mcl_.*")
     .allowlist_function("mcl_.*");
+    #[cfg(feature="shared_mem")]
+    let bindings = bindings.clang_arg("-DMCL_SHARED_MEM");
     let bindings =bindings.generate()
         // Unwrap the Result and panic on failure.
         .expect("Unable to generate bindings");

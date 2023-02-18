@@ -4,11 +4,55 @@
 use std::slice;
 use std::ptr::null_mut;
 use libmcl_sys::*;
-use std::ffi::{c_void, CString, CStr};
+use std::ffi::{c_void, CString, CStr,c_char};
+use bitflags::bitflags;
 
-use crate::task::ArgOpt;
+
+
 use crate::prog::PrgType;
-use crate::registered_buffer::{RegisteredBuffer};
+use crate::registered_buffer::{RegisteredBuffer,SharedMemBuffer};
+
+
+
+
+#[derive(Clone, PartialEq)]
+pub(crate) enum ReqStatus {
+    Completed,
+    Allocated,
+    Pending,
+    InProgress,
+    Finishing,
+    Unknown,
+}
+// pub struct ArgOpt;
+bitflags! {
+    pub(crate) struct ArgOpt: u64 {
+        const EMPTY = 0 as u64;
+        const INPUT = MCL_ARG_INPUT as u64; 
+        const OUTPUT = MCL_ARG_OUTPUT as u64; 
+        const SCALAR = MCL_ARG_SCALAR as u64; 
+        const BUFFER = MCL_ARG_BUFFER as u64; 
+        const RESIDENT = MCL_ARG_RESIDENT as u64; 
+        const INVALID = MCL_ARG_INVALID as u64; 
+        const RDONLY = MCL_ARG_RDONLY as u64; 
+        const WRONLY = MCL_ARG_WRONLY as u64; 
+        const LOCAL = MCL_ARG_LOCAL as u64; 
+        const DONE = MCL_ARG_DONE as u64; 
+        const DYNAMIC = MCL_ARG_DYNAMIC as u64; 
+        const REWRITE = MCL_ARG_REWRITE as u64;
+        #[cfg(feature="shared_mem")]
+        const SHARED = MCL_ARG_SHARED as u64;
+        #[cfg(feature="shared_mem")]
+        const SHARED_MEM_NEW = MCL_SHARED_MEM_NEW as u64;
+        #[cfg(feature="shared_mem")]
+        const SHARED_MEM_DEL_OLD = MCL_SHARED_MEM_DEL_OLD as u64;
+    }
+
+    pub(crate) struct TaskOpt: u64 {
+        const EMPTY = 0 as u64;
+        const SHARED = MCL_HDL_SHARED as u64;
+    }
+}
 
 
 /// Initializes MCL
@@ -121,9 +165,9 @@ pub(crate) fn prg_load(path: &str, compile_args: &str, flags: PrgType ) {
 /// Create a new MCL task
 /// 
 /// Returns a new task handle
-pub(crate) fn task_create() -> *mut mcl_handle {
+pub(crate) fn task_create(flags: TaskOpt) -> *mut mcl_handle {
     
-    let hdl = unsafe { mcl_task_create() };
+    let hdl = unsafe { mcl_task_create_with_props(flags.bits()) };
     
     if hdl.is_null() {
         panic!("Error. Could not create MCL task");
@@ -131,6 +175,8 @@ pub(crate) fn task_create() -> *mut mcl_handle {
 
     hdl
 }
+
+
 
 /// Create and initialize a new MCL task
 ///
@@ -201,7 +247,25 @@ pub(crate) fn task_set_local(hdl: *mut mcl_handle, argid: u64, mem_size: usize, 
 /// `flags` - Any of the MCL_ARG_* flags. Must include one of MCL_ARG_BUFFER or MCL_ARG_SCALAR
 pub(crate) fn task_set_arg_registered_buffer(hdl: *mut mcl_handle, argid: u64, buffer: &RegisteredBuffer) {
     // assert!(flags.contains(ArgOpt::BUFFER), "buffer was not specified using the buffer attribute.");
-    println!("task_set_arg_registered_buffer {argid} {:?} {:?} {:?} {:?}",buffer.base_addr(), buffer.u8_len() as u64, buffer.u8_offset()  as i64, buffer.flags().bits());
+    // println!("task_set_arg_registered_buffer {argid} {:?} {:?} {:?} {:?}",buffer.base_addr(), buffer.u8_len() as u64, buffer.u8_offset()  as i64, buffer.flags().bits());
+    let err = unsafe { mcl_task_set_arg_buffer(hdl, argid, buffer.base_addr(), buffer.u8_len() as u64, buffer.u8_offset()  as i64, buffer.flags().bits()) };
+    if err != 0 {
+        panic!("Error {}. Could not set argument for TaskHandle", err);
+    }
+
+}
+
+/// same as task_set_arg but for mcl shared mem buffers
+/// 
+/// ## Arguments
+/// 
+/// `hdl` - Task handle to set argument for
+/// `argid` - The index of the argument
+/// `array_slice` - The data to pass
+/// `flags` - Any of the MCL_ARG_* flags. Must include one of MCL_ARG_BUFFER or MCL_ARG_SCALAR
+pub(crate) fn task_set_arg_shared_mem_buffer(hdl: *mut mcl_handle, argid: u64, buffer: &SharedMemBuffer) {
+    // assert!(flags.contains(ArgOpt::BUFFER), "buffer was not specified using the buffer attribute.");
+    // println!("task_set_arg_registered_buffer {argid} {:?} {:?} {:?} {:?}",buffer.base_addr(), buffer.u8_len() as u64, buffer.u8_offset()  as i64, buffer.flags().bits());
     let err = unsafe { mcl_task_set_arg_buffer(hdl, argid, buffer.base_addr(), buffer.u8_len() as u64, buffer.u8_offset()  as i64, buffer.flags().bits()) };
     if err != 0 {
         panic!("Error {}. Could not set argument for TaskHandle", err);
@@ -263,27 +327,7 @@ pub(crate) fn task_free(hdl: *mut mcl_handle) {
     }
 }
 
-// /// Wait for a task to complete
-// /// 
-// /// ## Arguments
-// /// 
-// /// `hdl` - The handle to wait for
-// pub(crate) fn wait(hdl: *mut mcl_handle) {
-    
-//     let err = unsafe { mcl_wait(hdl) };
-//     if err != 0 {
-//         panic!("Error {}. Could not wait for TaskHandle to complete.", err);
-//     }
-// }
 
-// /// Wait for all pending tasks to complete
-// ///
-// pub(crate) fn wait_all(){
-//     let err = unsafe { mcl_wait_all() };
-//     if err != 0 {
-//         panic!("Error {}. Wait all failed.", err);
-//     }
-// }
 
 /// Test whether a task has completed
 /// 
@@ -292,17 +336,17 @@ pub(crate) fn task_free(hdl: *mut mcl_handle) {
 /// hdl - Reference to the task handle to test
 /// 
 /// Returns the status of the handle. One of the MCL_REQ_* constants
-pub(crate) fn test(hdl: *mut mcl_handle) -> crate::ReqStatus {
+pub(crate) fn test(hdl: *mut mcl_handle) -> ReqStatus {
     
     let req_status = unsafe { mcl_test(hdl) } as u32;
 
     match req_status  {
-        MCL_REQ_COMPLETED  => crate::ReqStatus::Completed,    
-        MCL_REQ_ALLOCATED  => crate::ReqStatus::Allocated,     
-        MCL_REQ_PENDING    => crate::ReqStatus::Pending,     
-        MCL_REQ_INPROGRESS => crate::ReqStatus::InProgress,     
-        MCL_REQ_FINISHING  => crate::ReqStatus::Finishing, 
-        _                  => crate::ReqStatus::Unknown,     
+        MCL_REQ_COMPLETED  => ReqStatus::Completed,    
+        MCL_REQ_ALLOCATED  => ReqStatus::Allocated,     
+        MCL_REQ_PENDING    => ReqStatus::Pending,     
+        MCL_REQ_INPROGRESS => ReqStatus::InProgress,     
+        MCL_REQ_FINISHING  => ReqStatus::Finishing, 
+        _                  => ReqStatus::Unknown,     
     }
 }
 
@@ -327,21 +371,6 @@ pub(crate) fn transfer_create(nargs: u64, ncopies: u64, flags: u64) -> *mut mcl_
     // }
 }
 
-/// Set up an argument associated with a transfer handle
-/// 
-/// # Arguments
-/// 
-/// * `t_hdl` - Transfer handle to set argument for
-/// * `idx` - The index of the argument
-/// * `array_slice` - The data to pass
-/// * `flags` - Any of the MCL_ARG_* flags. Must include one of MCL_ARG_BUFFER or MCL_ARG_SCALAR
-pub(crate) fn transfer_set_arg_mut(t_hdl: *mut mcl_transfer , idx: u64, arg: &[u8], offset: isize, flags: ArgOpt) {
-
-    let err = unsafe { mcl_transfer_set_arg(t_hdl, idx,  arg.as_ptr() as *mut c_void, arg.len() as u64, offset as i64, flags.bits()) };
-    if err != 0 {
-        panic!("Error {}. Could not set transfer argument", err);
-    }
-}
 
 pub(crate) fn transfer_set_arg(t_hdl: *mut mcl_transfer, idx: u64, arg: &[u8], offset: isize, flags: ArgOpt) {
 
@@ -382,18 +411,6 @@ pub(crate) fn transfer_exec(t_hdl: *mut mcl_transfer, d_type: crate::DevType) {
     }
 }
 
-/// Wait for a transfer to complete
-/// 
-/// ## Arguments
-/// 
-/// `t_hdl` - The tranfser handle to wait for
-pub(crate) fn transfer_wait(t_hdl: *mut mcl_transfer) {
-
-    let err = unsafe { mcl_transfer_wait(t_hdl) };
-    if err != 0 {
-        panic!("Error {}. Failed waiting on transfer TaskHandle", err);
-    }
-}
 
 /// Test whether a transfer has completed
 /// 
@@ -402,16 +419,16 @@ pub(crate) fn transfer_wait(t_hdl: *mut mcl_transfer) {
 /// * t_hdl - The transfer handle to test
 /// 
 /// Returns the status of the handle. One of the MCL_REQ_* constants
-pub(crate) fn transfer_test(t_hdl: *mut mcl_transfer) -> crate::ReqStatus {
+pub(crate) fn transfer_test(t_hdl: *mut mcl_transfer) -> ReqStatus {
     
     let req_status = unsafe { mcl_transfer_test(t_hdl) } as u32;
     match req_status  {
-        MCL_REQ_COMPLETED  => crate::ReqStatus::Completed,    
-        MCL_REQ_ALLOCATED  => crate::ReqStatus::Allocated,     
-        MCL_REQ_PENDING    => crate::ReqStatus::Pending,     
-        MCL_REQ_INPROGRESS => crate::ReqStatus::InProgress,     
-        MCL_REQ_FINISHING  => crate::ReqStatus::Finishing, 
-        _                  => crate::ReqStatus::Unknown,     
+        MCL_REQ_COMPLETED  => ReqStatus::Completed,    
+        MCL_REQ_ALLOCATED  => ReqStatus::Allocated,     
+        MCL_REQ_PENDING    => ReqStatus::Pending,     
+        MCL_REQ_INPROGRESS => ReqStatus::InProgress,     
+        MCL_REQ_FINISHING  => ReqStatus::Finishing, 
+        _                  => ReqStatus::Unknown,     
     }
 }
 
@@ -432,7 +449,7 @@ pub(crate) fn transfer_free(t_hdl: *mut mcl_transfer) {
 pub(crate) fn register_buffer( arg: &[u8],  flags: ArgOpt){
     assert!(flags.contains(ArgOpt::BUFFER), "buffer was not specified using the buffer attribute.");
     assert!(flags.contains(ArgOpt::RESIDENT), "buffer was not specified using the resident attribute.");
-    println!("register buffer: {:?} {:?} {flags:?}",arg.as_ptr(),arg.len());
+    // println!("register buffer: {:?} {:?} {flags:?}",arg.as_ptr(),arg.len());
     let err = unsafe { mcl_register_buffer(arg.as_ptr() as *mut c_void, arg.len()  as u64, flags.bits()) };
     if err != 0 {
         panic!("Error {}. Could not register mut buffer", err);
@@ -453,6 +470,44 @@ pub(crate) fn invalidate_buffer( arg: &[u8]){
     if err != 0 {
         panic!("Error {}. Could not inregister  buffer", err);
     }
+}
+
+#[cfg(feature="shared_mem")] 
+pub(crate) fn get_shared_task_id(hdl: *mut mcl_handle) -> Option<u32>{
+    Some(unsafe { mcl_task_get_sharing_id(hdl) })
+}
+
+
+#[cfg(feature="shared_mem")] 
+pub(crate) fn shared_task_test(pid: i32, hdl_id: u32) -> ReqStatus {
+    
+    let req_status = unsafe { mcl_test_shared_hdl(pid as pid_t, hdl_id) } as i32;
+    if req_status < 0 {
+        ReqStatus::Unknown
+    }
+    else {
+        match req_status as u32 {
+            MCL_REQ_COMPLETED  => ReqStatus::Completed,    
+            MCL_REQ_ALLOCATED  => ReqStatus::Allocated,     
+            MCL_REQ_PENDING    => ReqStatus::Pending,     
+            MCL_REQ_INPROGRESS => ReqStatus::InProgress,     
+            MCL_REQ_FINISHING  => ReqStatus::Finishing, 
+            _                  => ReqStatus::Unknown,     
+        }
+    }
+}
+
+#[cfg(feature="shared_mem")] 
+pub(crate) fn get_shared_buffer(name: &str, size: usize, flags: ArgOpt) -> *mut c_void {
+    // println!("{:?} {:?} {:?}",flags,flags.bits(),flags.bits() as i32);
+    let addr = unsafe {mcl_get_shared_buffer(name.as_ptr() as *const c_char, size as u64, flags.bits() as i32)};
+    assert!(!addr.is_null(), "Getting shared buffer failed {addr:?}");
+    addr
+}
+
+#[cfg(feature="shared_mem")] 
+pub(crate) fn detach_shared_buffer(addr: *mut c_void){
+    unsafe { mcl_free_shared_buffer(addr) }
 }
 
 

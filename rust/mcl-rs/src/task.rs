@@ -1,41 +1,10 @@
 use libmcl_sys::*;
 use crate::low_level;
+use crate::low_level::{ArgOpt,TaskOpt,ReqStatus};
 use crate::device::DevType;
-use crate::registered_buffer::RegisteredBuffer;
-
-use bitflags::bitflags;
+use crate::registered_buffer::{RegisteredBuffer,SharedMemBuffer};
 
 
-#[derive(Clone, PartialEq)]
-pub(crate) enum ReqStatus {
-    Completed,
-    Allocated,
-    Pending,
-    InProgress,
-    Finishing,
-    Unknown,
-}
-// pub struct ArgOpt;
-bitflags! {
-    pub(crate) struct ArgOpt: u64 {
-        const EMPTY = 0 as u64;
-        const INPUT = MCL_ARG_INPUT as u64; 
-        const OUTPUT = MCL_ARG_OUTPUT as u64; 
-        const SCALAR = MCL_ARG_SCALAR as u64; 
-        const BUFFER = MCL_ARG_BUFFER as u64; 
-        const RESIDENT = MCL_ARG_RESIDENT as u64; 
-        const INVALID = MCL_ARG_INVALID as u64; 
-        const RDONLY = MCL_ARG_RDONLY as u64; 
-        const WRONLY = MCL_ARG_WRONLY as u64; 
-        const LOCAL = MCL_ARG_LOCAL as u64; 
-        const DONE = MCL_ARG_DONE as u64; 
-        const DYNAMIC = MCL_ARG_DYNAMIC as u64; 
-        const REWRITE = MCL_ARG_REWRITE as u64;
-        #[cfg(feature="shared_mem")]
-        const SHARED = MCL_ARG_SHARED as u64;
-        
-    }
-}
 
 unsafe impl Send for Task<'_> {}
 unsafe impl Sync for Task<'_> {}
@@ -45,22 +14,31 @@ pub struct Task<'a> {
     // we want to stare the actual reference to the original argument so we can track lifetimes appropriately
     // this also will allow us to protect agains the same argument being used as an output simulataneous
     // aka this prevents us from doing dirty C-memory things :)
-    args: Vec<TaskArgOrRegBuf<'a>>, 
+    args: Vec<TaskArgOrBuf<'a>>, 
     curr_arg: usize,
     les: Option<[u64; 3]>,
     dev: DevType,
     c_handle: *mut mcl_handle,
+    shared_id: Option<u32>,
 }
 
 impl <'a>  Task<'a> {
 
-    pub(crate) fn new(kernel_name_cl: &str, nargs: usize) -> Self {
+    pub(crate) fn new(kernel_name_cl: &str, nargs: usize, flags: TaskOpt) -> Self {
+        let c_handle = low_level::task_create(flags);
+        let id = if flags.contains(TaskOpt::SHARED) {
+            low_level::get_shared_task_id(c_handle)
+        } 
+        else {
+            None
+        };
         let task = Task {
             args: vec![Default::default();nargs],
             curr_arg: 0,
             les: None,
             dev: DevType::ANY,
-            c_handle: low_level::task_create(),
+            c_handle: c_handle,
+            shared_id: id,
         };
         low_level::task_set_kernel(task.c_handle, kernel_name_cl, nargs as u64);
         task
@@ -91,9 +69,10 @@ impl <'a>  Task<'a> {
             TaskArgData::Scalar(x) => low_level::task_set_arg(self.c_handle, self.curr_arg as u64, x, arg.flags),
             TaskArgData::Buffer(x) => low_level::task_set_arg(self.c_handle, self.curr_arg as u64, x, arg.flags),
             TaskArgData::Local(x) => low_level::task_set_local(self.c_handle, self.curr_arg as u64, *x, arg.flags),
+            TaskArgData::Shared(..) => panic!("must use arg_shared_buffer api "),
             TaskArgData::Empty => panic!("cannot have an empty arg"),
         }
-        self.args[self.curr_arg]=TaskArgOrRegBuf::TaskArg(arg);
+        self.args[self.curr_arg]=TaskArgOrBuf::TaskArg(arg);
         self.curr_arg += 1;
 
         self
@@ -120,7 +99,41 @@ impl <'a>  Task<'a> {
     ///``` 
     pub fn arg_buffer(mut self, buffer: RegisteredBuffer<'a>) -> Self { //TODO fix the offset issue
         low_level::task_set_arg_registered_buffer(self.c_handle, self.curr_arg as u64, &buffer);
-        self.args[self.curr_arg]=TaskArgOrRegBuf::RegBuf(buffer.clone());
+        self.args[self.curr_arg]=TaskArgOrBuf::RegBuf(buffer.clone());
+        self.curr_arg += 1;
+
+        self
+    }
+
+    /// Set a new shared argument buffer `arg` for `this` mcl task in preparation
+    /// 
+    /// Returns the Task with the arg set
+    ///
+    /// # Saftey
+    ///
+    /// We track the reader and writers associated with this buffer to protect access, but that only applies to this process
+    ///
+    /// Regardless of the above statement, this is inhereantly unsafe as this represents a shared memory buffer, managed by the MCL c-library, no guarantees can be provided on 
+    /// multiple processes modifying this buffer simultaneously
+    /// 
+    /// # Examples
+    ///```no_run 
+    ///     let mcl = mcl_rs::MclEnvBuilder::new().initialize();
+    ///     mcl.create_prog("my_prog",mcl_rs::PrgType::Src)
+    ///         .with_compile_args("-D MYDEF").load();
+    ///     
+    ///     let data = vec![0; 4];
+    ///     let pes: [u64; 3] = [1, 1, 1];
+    /// 
+    ///     let mcl_future = mcl.task("my_kernel", 1)
+    ///                 .arg(mcl_rs::TaskArg::input_slice(&data))
+    ///                 .exec(pes);
+    ///     futures::executor::block_on(mcl_future);
+    /// 
+    ///``` 
+    pub unsafe fn arg_shared_buffer(mut self, buffer: SharedMemBuffer) -> Self { //TODO fix the offset issue
+        low_level::task_set_arg_shared_mem_buffer(self.c_handle, self.curr_arg as u64, &buffer);
+        self.args[self.curr_arg]=TaskArgOrBuf::ShmBuf(buffer.clone());
         self.curr_arg += 1;
 
         self
@@ -187,6 +200,11 @@ impl <'a>  Task<'a> {
         return self;
     }
 
+    /// If this is a shared task, return is unique ID, other wise return none
+    pub fn shared_id(&self) -> Option<u32> {
+        self.shared_id
+    }
+
     /// Submit the task for execution
     /// 
     /// ## Arguments
@@ -215,12 +233,14 @@ impl <'a>  Task<'a> {
         assert_eq!(self.curr_arg, self.args.len());
         for arg in &self.args {
             match arg {
-                TaskArgOrRegBuf::RegBuf(buf) => buf.alloc().await,
-                TaskArgOrRegBuf::TaskArg(_) => {},
+                TaskArgOrBuf::RegBuf(buf) => buf.alloc().await,
+                TaskArgOrBuf::ShmBuf(buf) => buf.alloc().await,
+                TaskArgOrBuf::TaskArg(_) => {},
             }
         }
 
         low_level::exec(self.c_handle, pes, &mut self.les, self.dev);
+
 
         while low_level::test(self.c_handle) != ReqStatus::Completed {
             async_std::task::yield_now().await;
@@ -263,15 +283,34 @@ impl Drop for Task<'_>  {
     }
 }
 
-#[derive(Clone)]
-enum TaskArgOrRegBuf<'a>{
-    TaskArg(TaskArg<'a>),
-    RegBuf(RegisteredBuffer<'a>),
+pub struct SharedTask{
+    pid: pid_t, 
+    hdl_id: u32
 }
 
-impl <'a> Default for TaskArgOrRegBuf<'a>{
+/// Represents a shared task handle, that can be use to await the completion of a task on a different process from the one which created it
+impl SharedTask{
+    pub(crate) fn new(pid: pid_t, hdl_id: u32) -> SharedTask{
+        SharedTask{pid,hdl_id}
+    }
+
+    pub async fn wait(&self) {
+        while low_level::shared_task_test(self.pid,self.hdl_id) != ReqStatus::Completed {
+            async_std::task::yield_now().await;
+        }
+    }
+}
+
+#[derive(Clone)]
+enum TaskArgOrBuf<'a>{
+    TaskArg(TaskArg<'a>),
+    RegBuf(RegisteredBuffer<'a>),
+    ShmBuf(SharedMemBuffer)
+}
+
+impl <'a> Default for TaskArgOrBuf<'a>{
     fn  default() -> Self {
-        TaskArgOrRegBuf::TaskArg(Default::default())
+        TaskArgOrBuf::TaskArg(Default::default())
     }
 }
 
@@ -281,6 +320,7 @@ pub(crate) enum TaskArgData<'a> {
     Scalar(&'a [u8]),
     Buffer(&'a [u8]),
     Local(usize),
+    Shared(String,usize),
     Empty,
 }
 
@@ -290,6 +330,7 @@ impl <'a> TaskArgData<'a> {
             TaskArgData::Scalar(x) => x.len(),
             TaskArgData::Buffer(x) => x.len(),
             TaskArgData::Local(x) => *x,
+            TaskArgData::Shared(_,x) => *x,
             TaskArgData::Empty => 0,
         }
     }
@@ -410,6 +451,35 @@ impl<'a> TaskArg<'a> {
         }
     }
 
+    /// Requests an shared allocation of `num_bytes` accesible on other processes using `name
+    /// 
+    /// 
+    /// Returns a new TaskArg
+    /// 
+    /// # Examples
+    ///     
+    ///```no_run 
+    ///     let mcl = mcl_rs::MclEnvBuilder::new().initialize();
+    ///     mcl.create_prog("my_prog",mcl_rs::PrgType::Src)
+    ///         .with_compile_args("-D MYDEF").load();
+    ///     let data = 4;
+    ///     let les: [u64; 3] = [1, 1, 1];
+    ///     let pes: [u64; 3] = [1, 1, 1];
+    ///     let mcl_future = mcl.task("my_kernel", 1)
+    ///                 .arg(mcl_rs::TaskArg::input_local(400))
+    ///                 .lwsize(les)
+    ///                 .dev(mcl_rs::DevType::CPU)
+    ///                 .exec(pes);
+    ///     futures::executor::block_on(mcl_future);
+    ///```  
+    pub fn input_shared<T>(name: &str, size: usize) -> Self {
+        TaskArg{
+            data: TaskArgData::Shared(name.to_owned(),size*std::mem::size_of::<T>()),
+            flags: ArgOpt::SHARED | ArgOpt::INPUT | ArgOpt::BUFFER,
+            orig_type_size: std::mem::size_of::<T>(),
+        }
+    }
+
 
     /// Create a new task output argument from `slice` 
     /// 
@@ -435,6 +505,35 @@ impl<'a> TaskArg<'a> {
         TaskArg {
             data: TaskArgData::Buffer(to_u8_slice(slice)),
             flags: ArgOpt::OUTPUT |ArgOpt::BUFFER,
+            orig_type_size: std::mem::size_of::<T>(),
+        }
+    }
+
+    /// Requests an shared allocation of `num_bytes` accesible on other processes using `name
+    /// 
+    /// 
+    /// Returns a new TaskArg
+    /// 
+    /// # Examples
+    ///     
+    ///```no_run 
+    ///     let mcl = mcl_rs::MclEnvBuilder::new().initialize();
+    ///     mcl.create_prog("my_prog",mcl_rs::PrgType::Src)
+    ///         .with_compile_args("-D MYDEF").load();
+    ///     let data = 4;
+    ///     let les: [u64; 3] = [1, 1, 1];
+    ///     let pes: [u64; 3] = [1, 1, 1];
+    ///     let mcl_future = mcl.task("my_kernel", 1)
+    ///                 .arg(mcl_rs::TaskArg::input_local(400))
+    ///                 .lwsize(les)
+    ///                 .dev(mcl_rs::DevType::CPU)
+    ///                 .exec(pes);
+    ///     futures::executor::block_on(mcl_future);
+    ///```  
+    pub fn output_shared<T>(name: &str, size: usize) -> Self {
+        TaskArg{
+            data: TaskArgData::Shared(name.to_owned(),size*std::mem::size_of::<T>()),
+            flags: ArgOpt::SHARED |  ArgOpt::OUTPUT | ArgOpt::BUFFER,
             orig_type_size: std::mem::size_of::<T>(),
         }
     }
@@ -493,6 +592,36 @@ impl<'a> TaskArg<'a> {
         TaskArg {
             data: TaskArgData::Buffer(to_u8_slice(slice)),
             flags: ArgOpt::OUTPUT | ArgOpt::INPUT | ArgOpt::BUFFER,
+            orig_type_size: std::mem::size_of::<T>(),
+        }
+    }
+
+    /// Requests an shared allocation of `num_bytes` accesible on other processes using `name
+    /// 
+    /// 
+    /// Returns a new TaskArg
+    /// 
+    /// # Examples
+    ///     
+    ///```no_run 
+    ///     let mcl = mcl_rs::MclEnvBuilder::new().initialize();
+    ///     mcl.create_prog("my_prog",mcl_rs::PrgType::Src)
+    ///         .with_compile_args("-D MYDEF").load();
+    ///     let data = 4;
+    ///     let les: [u64; 3] = [1, 1, 1];
+    ///     let pes: [u64; 3] = [1, 1, 1];
+    ///     let mcl_future = mcl.task("my_kernel", 1)
+    ///                 .arg(mcl_rs::TaskArg::input_local(400))
+    ///                 .lwsize(les)
+    ///                 .dev(mcl_rs::DevType::CPU)
+    ///                 .exec(pes);
+    ///     futures::executor::block_on(mcl_future);
+    ///```  
+    pub fn inout_shared<T>(name: &str, size: usize) -> Self {
+        // println!("inout_shared: {size} {}",size*std::mem::size_of::<T>());
+        TaskArg{
+            data: TaskArgData::Shared(name.to_owned(),size*std::mem::size_of::<T>()),
+            flags: ArgOpt::SHARED |  ArgOpt::INPUT |  ArgOpt::OUTPUT | ArgOpt::BUFFER,
             orig_type_size: std::mem::size_of::<T>(),
         }
     }
@@ -693,6 +822,8 @@ impl<'a> TaskArg<'a> {
         }
         return self;
     }
+
+    
 
     // /// Overwrites the flags already set for the argument with the given ones
     // /// 
