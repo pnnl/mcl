@@ -72,7 +72,7 @@ if test "$build_mac" = "yes" ; then
 fi
 
 AC_ARG_ENABLE([shared-memory],
-    [AC_HELP_STRING([--enable-ipshmem],
+    [AC_HELP_STRING([--enable-shared-memory],
 		    [Enable inter-process shared memory (default: disabled)])])
 
 AC_ARG_ENABLE([pocl-extensions],
@@ -122,14 +122,14 @@ if test "$enable_trace" = "yes" ; then
   AS_VAR_APPEND(CFLAGS, " -D_TRACE=1")
 fi
 
-if test "$enable_ipshmem" = "yes" ; then
+if test "$enable_shared_memory" = "yes" ; then
   AC_DEFINE([SHARED_MEM], [1], [Build shared memory.])
 fi
 
 if test "$enable_pocl_extensions" = "yes" ; then
   AC_DEFINE([USE_POCL_SHARED_MEM], [1], [Use OpenCL extensions provided by pocl.])
 fi
-AM_CONDITIONAL([SHARED_MEM], [test "$enable_ipshmem" = "yes"])
+AM_CONDITIONAL([SHARED_MEM], [test "$enable_shared_memory" = "yes"])
 
 # Pass the conditionals to automake
 AM_CONDITIONAL([LINUX],   [test "$build_linux" = "yes"])
@@ -178,7 +178,7 @@ echo "          OpenCL2:        $enable_opencl2"
 if test "$build_mac" = "yes" ; then
 echo "          Apple OCL:      $enable_appleocl"
 fi
-echo "          IPSHM:          $enable_ipshmem"
+echo "          SHARED Mem:          $enable_shared_memory"
 echo "          POCL Ext:       $enable_pocl_extensions"
 echo ""
 echo "Compilers: "
