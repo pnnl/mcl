@@ -16,6 +16,7 @@ libmcl-sys = {version = "0.1.2-rc", path = "../libmcl-sys"}
 clap = {version = "4.0.29", features = ["derive"] }
 
 [features]
+pocl_extensions=["shared_mem", "libmcl-sys/pocl_extensions"]
 shared_mem=["libmcl-sys/shared_mem"]
 mcl_debug=["libmcl-sys/mcl_debug"]
 docs-rs = ["libmcl-sys/docs-rs"]

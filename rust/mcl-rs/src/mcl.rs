@@ -1,11 +1,18 @@
 use crate::low_level;
-use crate::low_level::{TaskOpt,ArgOpt};
+use crate::low_level::{TaskOpt};
+#[cfg(feature = "shared_mem")]
+use crate::low_level::{ArgOpt};
+
 
 // use crate::device::DevInfo;
-use crate::prog::{Prog,PrgType};
-use crate::task::{Task,TaskArg,SharedTask};
-use crate::transfer::{Transfer};
-use crate::registered_buffer::{RegisteredBuffer,SharedMemBuffer};
+use crate::prog::{PrgType, Prog};
+use crate::registered_buffer::RegisteredBuffer;
+#[cfg(feature = "shared_mem")]
+use crate::registered_buffer::SharedMemBuffer;
+use crate::task::{ Task, TaskArg};
+#[cfg(feature = "shared_mem")]
+use crate::task::SharedTask;
+use crate::transfer::Transfer;
 
 use bitflags::bitflags;
 
@@ -18,9 +25,9 @@ bitflags! {
 
 /// This structure is used to setup the MCL environment with the given parameters
 /// # Examples
-///``` 
+///```
 /// use mcl_rs::MclEnvBuilder;
-/// 
+///
 /// let env = MclEnvBuilder::new()
 ///                 .num_workers(10)
 ///                 .bind_workers()
@@ -31,20 +38,17 @@ pub struct MclEnvBuilder {
     flags: MclEnvBuilderFlags,
 }
 
-
 impl MclEnvBuilder {
-
     /// Creates and returns a new MclEnvBuilder with the default values
-    /// 
+    ///
     /// # Examples
-    ///``` 
+    ///```
     /// use mcl_rs::MclEnvBuilder;
-    /// 
+    ///
     /// let env = MclEnvBuilder::new()
     ///                 .initialize();
-    ///``` 
+    ///```
     pub fn new() -> MclEnvBuilder {
-
         MclEnvBuilder {
             num_workers: 1,
             flags: Default::default(),
@@ -52,22 +56,21 @@ impl MclEnvBuilder {
     }
 
     /// Set the num_workers to pass to the mcl initialization function
-    /// 
+    ///
     /// ## Arguments
-    /// 
+    ///
     /// * `num_workers` - The num_workers to pass to MCL
-    /// 
+    ///
     /// Returns the MclEnvBuilder with the num_workers set
-    /// 
+    ///
     /// # Examples
-    ///``` 
+    ///```
     /// use mcl_rs::MclEnvBuilder;
-    /// 
+    ///
     /// let env = MclEnvBuilder::new()
     ///                 .num_workers(1);
-    ///``` 
+    ///```
     pub fn num_workers(mut self, workers: usize) -> MclEnvBuilder {
-
         assert!(workers > 0);
 
         self.num_workers = workers;
@@ -76,23 +79,22 @@ impl MclEnvBuilder {
     }
 
     /// Set the num_workers to pass to the mcl initialization function
-    /// 
+    ///
     /// ## Arguments
-    /// 
+    ///
     /// * `num_workers` - The num_workers to pass to MCL
-    /// 
+    ///
     /// Returns the MclEnvBuilder with the num_workers set
-    /// 
+    ///
     /// # Examples
-    ///``` 
+    ///```
     /// use mcl_rs::MclEnvBuilder;
-    /// 
+    ///
     /// let env = MclEnvBuilder::new()
     ///                 .bind_workers();
-    ///``` 
+    ///```
     pub fn bind_workers(mut self) -> MclEnvBuilder {
-
-        assert!( self.num_workers > 0);
+        assert!(self.num_workers > 0);
 
         self.flags |= MclEnvBuilderFlags::MCL_SET_BIND_WORKERS;
 
@@ -100,21 +102,20 @@ impl MclEnvBuilder {
     }
 
     /// Initializes mcl
-    /// 
+    ///
     /// Returns an [Mcl] instance
     ///  
     /// # Examples
-    ///``` 
+    ///```
     /// use mcl_rs::MclEnvBuilder;
-    /// 
+    ///
     /// let env = MclEnvBuilder::new()
     ///                 .initialize();
     ///```
     pub fn initialize(self) -> Mcl {
-
         low_level::init(self.num_workers as u64, self.flags.bits());
 
-        Mcl{_env: MclEnv}
+        Mcl { _env: MclEnv }
     }
 }
 
@@ -127,14 +128,12 @@ pub(crate) struct MclEnv;
 //         return  low_level::get_ndev() as usize;
 //     }
 //     pub fn get_dev(&self, id: usize) -> DevInfo {
-    
+
 //         low_level::get_dev(id as u32)
 //     }
 // }
 
-
 impl Drop for MclEnv {
-
     /// Finalizes mcl when MclEnv goes out of scope
     fn drop(&mut self) {
         low_level::finit();
@@ -143,16 +142,15 @@ impl Drop for MclEnv {
 
 /// Represents an initialize MCL environment. When this struct goes out of scope the MCL environment is finalized.
 /// Thus, there is no need to explicitly call the equivalent of mcl_finit()
-pub struct Mcl{
-    pub(crate) _env: MclEnv
+pub struct Mcl {
+    pub(crate) _env: MclEnv,
 }
 
-impl Mcl{
-
+impl Mcl {
     /// Creates a new mcl prog from the given source file pointed to by `prog_path` and the specified Program Type [crate::prog::PrgType].
-    /// 
+    ///
     /// Returns a new [Prog][crate::prog::Prog] that can be loaded into the current mcl environment
-    /// 
+    ///
     /// # Examples
     ///```no_run
     /// use mcl_rs::{MclEnvBuilder,PrgType};
@@ -160,14 +158,14 @@ impl Mcl{
     /// let mcl = MclEnvBuilder::new().num_workers(10).initialize();
     /// mcl.create_prog("my_path",PrgType::Src);
     ///```
-    pub fn create_prog(&self, prog_path: &str,prog_type: PrgType) -> Prog {
-        Prog::from( prog_path,prog_type)
+    pub fn create_prog(&self, prog_path: &str, prog_type: PrgType) -> Prog {
+        Prog::from(prog_path, prog_type)
     }
 
     /// Creates and loads a new mcl prog from the given source file pointed to by `prog_path` and the specified Program Type [crate::prog::PrgType].
-    /// 
+    ///
     /// This is a convenience function for when no additional arguments need to be supplied with program/kernel during compile time
-    /// 
+    ///
     /// # Examples
     ///```no_run
     /// use mcl_rs::{MclEnvBuilder,PrgType};
@@ -175,50 +173,49 @@ impl Mcl{
     /// let mcl = MclEnvBuilder::new().num_workers(10).initialize();
     /// mcl.load_prog("my_path",PrgType::Src);
     ///```
-    pub fn load_prog(&self, prog_path: &str,prog_type: PrgType) {
-        Prog::from( prog_path,prog_type).load()
+    pub fn load_prog(&self, prog_path: &str, prog_type: PrgType) {
+        Prog::from(prog_path, prog_type).load()
     }
-
 
     /// Creates a new mcl task from the given kernel.
     ///
     /// This kernel must exist in a previously loaded [Prog][crate::prog::Prog].
-    /// 
+    ///
     /// Returns a new Task representing this kernel
     /// # Examples
-    /// 
+    ///
     ///```no_run
     ///     let mcl = mcl_rs::MclEnvBuilder::new().num_workers(10).initialize();
     ///     mcl.load_prog("my_path", mcl_rs::PrgType::Src);
     ///
     ///     let t = mcl.task("my_kernel", 2);
     ///```
-    pub fn task<'a>(&self, kernel_name_cl: &str, nargs: usize) -> Task<'a>{
-        Task::new( kernel_name_cl, nargs,TaskOpt::EMPTY)
+    pub fn task<'a>(&self, kernel_name_cl: &str, nargs: usize) -> Task<'a> {
+        Task::new(kernel_name_cl, nargs, TaskOpt::EMPTY)
     }
 
     /// Creates a new mcl task from the given kernel.
     ///
     /// This kernel must exist in a previously loaded [Prog][crate::prog::Prog].
-    /// 
+    ///
     /// Returns a new Task representing this kernel
     /// # Examples
-    /// 
+    ///
     ///```no_run
     ///     let mcl = mcl_rs::MclEnvBuilder::new().num_workers(10).initialize();
     ///     mcl.load_prog("my_path", mcl_rs::PrgType::Src);
     ///
     ///     let t = mcl.shared_task("my_kernel", 2);
     ///```
-    pub fn shared_task<'a>(&self, kernel_name_cl: &str, nargs: usize) -> Task<'a>{
-        Task::new( kernel_name_cl, nargs,TaskOpt::SHARED)
+    pub fn shared_task<'a>(&self, kernel_name_cl: &str, nargs: usize) -> Task<'a> {
+        Task::new(kernel_name_cl, nargs, TaskOpt::SHARED)
     }
 
-     /// Creates a new mcl shared task from the given process id and unique task id.
+    /// Creates a new mcl shared task from the given process id and unique task id.
     ///
     /// This task must have been created by process pid
     /// # Examples
-    /// 
+    ///
     ///```no_run
     ///     let mcl = mcl_rs::MclEnvBuilder::new().num_workers(10).initialize();
     ///     mcl.load_prog("my_path", mcl_rs::PrgType::Src);
@@ -227,8 +224,9 @@ impl Mcl{
     ///
     ///     let t = mcl.attach_shared_task(pid,task_id);
     ///```
-    pub fn attach_shared_task(&self,pid: i32, task_id: u32) -> SharedTask {
-        SharedTask::new(pid,task_id)
+    #[cfg(feature = "shared_mem")]
+    pub fn attach_shared_task(&self, pid: i32, task_id: u32) -> SharedTask {
+        SharedTask::new(pid, task_id)
     }
 
     /// Creates a new mcl transfer task with that will transfer `nargs` and suggest to the scheduler that `ncopies` should be created
@@ -239,25 +237,29 @@ impl Mcl{
     ///
     ///     let tr = mcl.transfer(1, 1);
     ///```
-    pub fn transfer<'a>(&self,nargs: usize, ncopies: usize) -> Transfer<'a>{
-        Transfer::new(nargs,ncopies,0)
+    pub fn transfer<'a>(&self, nargs: usize, ncopies: usize) -> Transfer<'a> {
+        Transfer::new(nargs, ncopies, 0)
     }
 
-    pub fn register_buffer<'a>(&self,arg: TaskArg<'a>) -> RegisteredBuffer<'a>{
+    pub fn register_buffer<'a>(&self, arg: TaskArg<'a>) -> RegisteredBuffer<'a> {
         RegisteredBuffer::new(arg)
     }
 
-    pub fn create_shared_buffer(&self,mut arg: TaskArg<'_>) -> SharedMemBuffer{
-        arg.flags |= ArgOpt::SHARED_MEM_NEW |  ArgOpt::SHARED_MEM_DEL_OLD |  ArgOpt::DYNAMIC |  ArgOpt::RESIDENT;
+    #[cfg(feature = "shared_mem")]
+    pub fn create_shared_buffer(&self, mut arg: TaskArg<'_>) -> SharedMemBuffer {
+        arg.flags |= ArgOpt::SHARED_MEM_NEW
+            | ArgOpt::SHARED_MEM_DEL_OLD
+            | ArgOpt::DYNAMIC
+            | ArgOpt::RESIDENT;
         // println!("{:?}",arg.flags);
         SharedMemBuffer::new(arg)
     }
 
-    pub fn attach_shared_buffer(&self,mut arg: TaskArg<'_>) -> SharedMemBuffer{
-        arg.flags |= ArgOpt::DYNAMIC  |  ArgOpt::RESIDENT;
+    #[cfg(feature = "shared_mem")]
+    pub fn attach_shared_buffer(&self, mut arg: TaskArg<'_>) -> SharedMemBuffer {
+        arg.flags |= ArgOpt::DYNAMIC | ArgOpt::RESIDENT;
         SharedMemBuffer::new(arg)
     }
-
 
     // /// Registers `buf` as an MCL buffer object for future use with MCL resident memory
     // ///
@@ -266,7 +268,7 @@ impl Mcl{
     // /// using only a portion of a large device buffer if necessary
     // ///
     // /// # Examples
-    // ///```no_run     
+    // ///```no_run
     // ///     let mcl = mcl_rs::MclEnvBuilder::new().initialize();
     // ///     let data = vec![0;100000];
     // ///
@@ -277,11 +279,11 @@ impl Mcl{
     // }
 
     /// Get the info of a specific device
-    /// 
+    ///
     /// ## Arguments
-    /// 
+    ///
     /// * `id` - The ID of the device to retrieve info for
-    /// 
+    ///
     /// Returns the info of specificed device
     ///```no_run
     ///     let mcl = mcl_rs::MclEnvBuilder::new().num_workers(10).initialize();
@@ -293,7 +295,7 @@ impl Mcl{
     }
 
     /// Get the number of devices in the system
-    /// 
+    ///
     /// Returns the number of devices available
     ///```no_run
     ///     let mcl = mcl_rs::MclEnvBuilder::new().initialize();
@@ -303,26 +305,22 @@ impl Mcl{
         low_level::get_ndev()
     }
 
-
     // /// Wait for all pending tasks to complete
-    // ///     
+    // ///
     // /// # Examples
-    // ///```no_run 
+    // ///```no_run
     // ///     let mcl = mcl_rs::MclEnvBuilder::new().initialize();
-    // ///     mcl.load_prog("my_prog",mcl_rs::PrgType::Src);  
-    // /// 
+    // ///     mcl.load_prog("my_prog",mcl_rs::PrgType::Src);
+    // ///
     // ///     let data = vec![0; 4];
     // ///     let pes: [u64; 3] = [1, 1, 1];
     // ///     let hdl =  mcl.task("my_kernel", 1)
-    // ///                 .arg(mcl_rs::TaskArg::input_slice(&data).write_only(true))      
+    // ///                 .arg(mcl_rs::TaskArg::input_slice(&data).write_only(true))
     // ///                 .exec(pes);
     // ///     mcl.wait_all();
     // ///```
     // pub fn wait_all(&self) {
     //     low_level::wait_all()
-        
+
     // }
-
 }
-
-

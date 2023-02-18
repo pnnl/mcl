@@ -1,11 +1,8 @@
 use mcl_rs;
 
-
 #[test]
-fn discovery()
-{
-    let env = mcl_rs::MclEnvBuilder::new()
-                .initialize();
+fn discovery() {
+    let env = mcl_rs::MclEnvBuilder::new().initialize();
 
     let ndevs = env.get_ndev();
 
@@ -16,5 +13,4 @@ fn discovery()
 
         println!("{:?}", dev);
     }
-
 }

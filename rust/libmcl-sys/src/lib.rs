@@ -3,8 +3,8 @@
 #![allow(non_snake_case)]
 
 // fn main() {
-//     let s : String = String::from(env!("OUT_DIR")); 
-    
+//     let s : String = String::from(env!("OUT_DIR"));
+
 //     println!("{}", s);
 // }
 include!(concat!(env!("OUT_DIR"), "/bindings.rs"));

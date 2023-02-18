@@ -26,9 +26,9 @@
 //                 .arg(mcl_rs::TaskArg::input_scalar(&size))
 //                 .dev(mcl_rs::DevType::FPGA)
 //                 .exec(pes)
-//                 .wait();   
+//                 .wait();
 //         );
-        
+
 //         if *sync {
 //             hdls[i].wait();
 //         }
@@ -39,7 +39,7 @@
 //             hdls[i].wait();
 //         }
 //     }
-    
+
 // }
 
 // #[test]
@@ -54,7 +54,7 @@
 //     let env = mcl_rs::MclEnvBuilder::new()
 //         .num_workers(workers)
 //         .initialize();
-    
+
 //     let mut rng = rand::thread_rng();
 
 //     // Generate x and y arrays of size vec_size and initialize with random numbers in [0, 100)
@@ -73,8 +73,6 @@
 
 //     let mut z = vec![0; vec_size];
 //     let sync = true;
-
-
 
 //     println!("Sync mcl add");
 //     add_mcl(&x, &y, &mut z, reps, &sync);

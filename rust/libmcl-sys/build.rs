@@ -6,9 +6,6 @@ use std::env;
 use std::path::PathBuf;
 use std::process::Command;
 
-
-
-
 #[cfg(feature = "docs-rs")]
 fn main() {
     let out_path = PathBuf::from(env::var("OUT_DIR").unwrap());
@@ -31,8 +28,8 @@ fn main() {
 fn main() {
     let out_path = PathBuf::from(env::var("OUT_DIR").unwrap());
 
-    let mut ocl_libpath : String;
-    let mut ocl_incpath : String;
+    let mut ocl_libpath: String;
+    let mut ocl_incpath: String;
     ocl_incpath = match env::var("OCL_PATH_INC") {
         Ok(val) => val,
         Err(_e) => "".to_string(),
@@ -43,19 +40,18 @@ fn main() {
     };
 
     if ocl_incpath.is_empty() || ocl_libpath.is_empty() {
-
         ocl_libpath.clear();
         ocl_incpath.clear();
-        // Find path to CUDA library and include to extact OpenCL 
-        let output = Command::new("which")
-        .arg("nvcc")
-        .output();
+        // Find path to CUDA library and include to extact OpenCL
+        let output = Command::new("which").arg("nvcc").output();
         let out = String::from_utf8(output.unwrap().stdout).unwrap();
 
         if !out.is_empty() {
-
             let mut split = out.split("bin");
-            ocl_libpath = split.next().expect("Could not detect CUDA libraries").to_owned();
+            ocl_libpath = split
+                .next()
+                .expect("Could not detect CUDA libraries")
+                .to_owned();
             ocl_incpath = ocl_libpath.clone();
             ocl_libpath.push_str("lib64/");
             ocl_incpath.push_str("include/");
@@ -73,7 +69,7 @@ fn main() {
         }
     }
 
-    #[cfg(not(target_os="macos"))]
+    #[cfg(not(target_os = "macos"))]
     if ocl_incpath.is_empty() || ocl_libpath.is_empty() {
         panic!("Build Error. Please set the paths to OpenCL: env variables OCL_PATH_INC (current={ocl_incpath}) and OCL_PATH_LIB (current={ocl_libpath}).
                 It may be necessary for you to build OpenCL manually, please visit http://portablecl.org/ for details on an open source implementation.");
@@ -82,7 +78,7 @@ fn main() {
     // #[cfg(not(target_os="macos"))]
     // if ocl_incpath.is_empty() || ocl_libpath.is_empty() || cfg!(feature="shared_mem"){
     //     #[cfg(all(not(feature="install_pocl"),not(feature="shared_mem")))]
-    //     panic!("Build Error. Please set the paths to OpenCL: env variables OCL_PATH_INC (current={}) and OCL_PATH_LIB (current={}). 
+    //     panic!("Build Error. Please set the paths to OpenCL: env variables OCL_PATH_INC (current={}) and OCL_PATH_LIB (current={}).
     //             Alternatively, use the 'install_pocl' feature to download and build the open source POCL (http://portablecl.org/)  OpenCL implentation.
     //             Note, POCL is not a Rust Crate so an internet connection is required as we will pull the source using git.
     //             This is highly experimental, and may require a different verson of clang and LLVM than you have installed (please see the POCL website for specifics).
@@ -93,9 +89,9 @@ fn main() {
     //         println!("cargo:warning=The shared_mem feature is enabled, this functionality currently requires a patched version of POCL (http://portablecl.org/) to operate.
     //             Note, POCL is not a Rust Crate so an internet connection is required as we will pull the source using git.
     //             This is highly experimental, and may require a different verson of clang and LLVM that you have installed (please see the POCL website for specifics).
-    //             It may be useful to set the LLVM_CONFIG_PATH to point to the appropriate 'llvm-config' executable. 
+    //             It may be useful to set the LLVM_CONFIG_PATH to point to the appropriate 'llvm-config' executable.
     //             To suppress this warning please add the 'install_pocl' feature flog");
-            
+
     //         #[allow(unreachable_code)]
     //         {
     //             if !out_path.clone().join("lib64/static/libOpenCL.a").exists(){
@@ -133,14 +129,13 @@ fn main() {
     //             }
     //             else {
     //                 ocl_incpath = out_path.clone().join("include").to_string_lossy().to_string();
-    //                 ocl_libpath = out_path.clone().join("lib64/static").to_string_lossy().to_string();    
+    //                 ocl_libpath = out_path.clone().join("lib64/static").to_string_lossy().to_string();
     //             }
     //             println!("cargo:rustc-link-search=native={ocl_libpath}");
     //             println!("cargo:rustc-link-lib=static=OpenCL");
     //         }
     //     }
     // }
-
 
     // Find path to MCL library and include
     let mut mcl_path = match env::var("MCL_PATH") {
@@ -149,69 +144,77 @@ fn main() {
     };
 
     if mcl_path.is_empty() {
-        let mcl_dest=out_path.clone().join("mcl_src");
+        let mcl_dest = out_path.clone().join("mcl_src");
         let shm_path = mcl_dest.clone().join("mcl_shared_mem_enabled");
-        
-        let  shm_changed = if cfg!(feature="shared_mem") {
+
+        let shm_changed = if cfg!(feature = "shared_mem") {
             !shm_path.exists() // shared_mem feature enabled but not previously compiled with it
-        }
-        else{ // shared_mem feature disabled
+        } else {
+            // shared_mem feature disabled
             shm_path.exists() //check if previously compiled with shared_mem
         };
 
         let debug_path = mcl_dest.clone().join("mcl_debug_enabled");
-        
-        let  debug_changed = if cfg!(feature="mcl_debug") {
+
+        let debug_changed = if cfg!(feature = "mcl_debug") {
             !debug_path.exists() // shared_mem feature enabled but not previously compiled with it
-        }
-        else{ // shared_mem feature disabled
+        } else {
+            // shared_mem feature disabled
             debug_path.exists() //check if previously compiled with shared_mem
         };
 
-        let build = !mcl_dest.exists() | 
-                        !mcl_dest.clone().join("lib/libmcl.a").exists() | 
-                        !mcl_dest.clone().join("lib/libmcl_sched.a").exists() | 
-                        !mcl_dest.clone().join("include/minos.h").exists() | 
-                        !mcl_dest.clone().join("include/minos_sched.h").exists();
+        let build = !mcl_dest.exists()
+            | !mcl_dest.clone().join("lib/libmcl.a").exists()
+            | !mcl_dest.clone().join("lib/libmcl_sched.a").exists()
+            | !mcl_dest.clone().join("include/minos.h").exists()
+            | !mcl_dest.clone().join("include/minos_sched.h").exists();
 
         if build || shm_changed || debug_changed {
-            if shm_path.exists(){
+            if shm_path.exists() {
                 std::fs::remove_file(shm_path.clone()).unwrap();
             }
 
-            if debug_path.exists(){
+            if debug_path.exists() {
                 std::fs::remove_file(shm_path.clone()).unwrap();
             }
             // println!("cargo:warning=copying mcl");
-            Command::new("cp").args(&["-rf", "mcl", &mcl_dest.to_string_lossy()])
-            .status().unwrap();
+            Command::new("cp")
+                .args(&["-rf", "mcl", &mcl_dest.to_string_lossy()])
+                .status()
+                .unwrap();
 
             //build deps
             let libatomic_ops = mcl_dest.clone().join("deps/libatomic_ops");
-            let libatomic_build = autotools::Config::new( libatomic_ops)
-            .reconf("-ivfWnone")
-            .fast_build(true)
-            .build();
+            let libatomic_build = autotools::Config::new(libatomic_ops)
+                .reconf("-ivfWnone")
+                .fast_build(true)
+                .build();
             println!("libatomic_build {libatomic_build:?}");
             let libatomic_inc = libatomic_build.clone().join("include");
             let libatomic_lib = libatomic_build.clone().join("include");
 
-            let uthash_inc =  mcl_dest.clone().join("deps/uthash/include");
-            
-            if cfg!(feature="shared_mem") {
+            let uthash_inc = mcl_dest.clone().join("deps/uthash/include");
+
+            if cfg!(feature = "shared_mem") {
                 std::fs::File::create(shm_path).unwrap();
             }
 
-            if cfg!(feature="mcl_debug") {
+            if cfg!(feature = "mcl_debug") {
                 std::fs::File::create(debug_path).unwrap();
             }
 
             // println!("cargo:warning=llvm_libs {:?}",env::var("LLVM_CONFIG_PATH"));
             let llvm_ldflags = match env::var("LLVM_CONFIG_PATH") {
-                Ok(llvm_config) => {
-                    String::from_utf8(Command::new(llvm_config.clone()).args(&["--ldflags"])
-                        .output().expect("failed to execute process").stdout).unwrap().trim().to_string()
-                },
+                Ok(llvm_config) => String::from_utf8(
+                    Command::new(llvm_config.clone())
+                        .args(&["--ldflags"])
+                        .output()
+                        .expect("failed to execute process")
+                        .stdout,
+                )
+                .unwrap()
+                .trim()
+                .to_string(),
                 Err(_e) => "".to_string(),
             };
 
@@ -244,30 +247,36 @@ fn main() {
             // };
 
             // println!("cargo:warning=llvm_libs {llvm_ldflags}");
-            let ldflags = format!("-L{} -L{ocl_libpath} {llvm_ldflags}",libatomic_lib.display());
+            let ldflags = format!(
+                "-L{} -L{ocl_libpath} {llvm_ldflags}",
+                libatomic_lib.display()
+            );
             // println!("cargo:warning=llvm_libs {ldflags}");
-            let mut mcl_config = autotools::Config::new( mcl_dest);
-            mcl_config.reconf("-ivfWnone")
-                      .cflag(format!("-I{} -I{} -I{ocl_incpath}",uthash_inc.display(),libatomic_inc.display()))
-                      .ldflag(ldflags)
-                      .insource(true)
-                      .enable("opencl2",Some("no"));
-            #[cfg(feature="mcl_debug")]
+            let mut mcl_config = autotools::Config::new(mcl_dest);
+            mcl_config
+                .reconf("-ivfWnone")
+                .cflag(format!(
+                    "-I{} -I{} -I{ocl_incpath}",
+                    uthash_inc.display(),
+                    libatomic_inc.display()
+                ))
+                .ldflag(ldflags)
+                .insource(true)
+                .enable("opencl2", Some("no"));
+            #[cfg(feature = "mcl_debug")]
             mcl_config.enable("debug", None);
-            #[cfg(feature="shared_mem")]
+            #[cfg(feature = "shared_mem")]
             mcl_config.enable("shared-memory", None);
-            #[cfg(feature="pocl_extensions")]
+            #[cfg(feature = "pocl_extensions")]
             mcl_config.enable("pocl-extensions", None);
-            
+
             let mcl_build = mcl_config.try_build();
-            
+
             mcl_path = match mcl_build.clone(){
                 Ok(path) => path.to_string_lossy().to_string(),
                 Err(msg) => panic!("BUILD FAILED: This may be due to either your OpenCL or LLVM (you can set the LLVM_CONFIG_PATH to help produce the correct path ) paths not being approriately picked up -- {msg}"),
             };
-            
-        }
-        else {
+        } else {
             mcl_path = mcl_dest.to_string_lossy().to_string();
         }
     }
@@ -275,27 +284,33 @@ fn main() {
     // println!("cargo:warning={mcl_path}");
 
     // let mcl_path=out_path.clone().to_string_lossy().to_string();
-    
-    assert!(!mcl_path.is_empty(),"Build Error. MCL_PATH environmental variable is not set");
+
+    assert!(
+        !mcl_path.is_empty(),
+        "Build Error. MCL_PATH environmental variable is not set"
+    );
 
     // Rebuild if include file has changed
     println!("cargo:rerun-if-changed={}/include/minos.h", mcl_path);
-    println!("cargo:rerun-if-changed={}/include/mcl/mcl_config.h", mcl_path);
+    println!(
+        "cargo:rerun-if-changed={}/include/mcl/mcl_config.h",
+        mcl_path
+    );
     println!("cargo:rerun-if-changed={}/include/mcl_sched.h", mcl_path);
     println!("cargo:rerun-if-changed={}/lib/libmcl.a", mcl_path);
     println!("cargo:rerun-if-changed={}/lib/libmcl_sched.a", mcl_path);
 
-    for entry in glob::glob("mcl/**/*.c").expect("failed to read glob pattern"){
+    for entry in glob::glob("mcl/**/*.c").expect("failed to read glob pattern") {
         match entry {
-            Ok(path) =>  println!("cargo:rerun-if-changed={}",path.display()),
-            Err(_) => {},
+            Ok(path) => println!("cargo:rerun-if-changed={}", path.display()),
+            Err(_) => {}
         }
     }
 
-    for entry in glob::glob("mcl/src/**/*.h").expect("failed to read glob pattern"){
+    for entry in glob::glob("mcl/src/**/*.h").expect("failed to read glob pattern") {
         match entry {
-            Ok(path) =>  println!("cargo:rerun-if-changed={}",path.display()),
-            Err(_) => {},
+            Ok(path) => println!("cargo:rerun-if-changed={}", path.display()),
+            Err(_) => {}
         }
     }
 
@@ -310,25 +325,26 @@ fn main() {
         // The input header we would like to generate
         // bindings for.
         .header("wrapper.h")
-        .clang_arg("-I".to_owned()+&mcl_path+"/include");
-    
+        .clang_arg("-I".to_owned() + &mcl_path + "/include");
+
     if !ocl_incpath.is_empty() {
-        bindings = bindings.clang_arg("-I".to_owned()+&ocl_incpath);
+        bindings = bindings.clang_arg("-I".to_owned() + &ocl_incpath);
     }
-        // .clang_arg("-I".to_owned()+&ocl_incpath)
-        // .clang_arg("-framework OpenCL")
-        // Tell cargo to invalidate the built crate whenever any of the
-        // included header files changed.
-       // .parse_callbacks(Box::new(bindgen::CargoCallbacks))
-        // Finish the builder and generate the bindings.
+    // .clang_arg("-I".to_owned()+&ocl_incpath)
+    // .clang_arg("-framework OpenCL")
+    // Tell cargo to invalidate the built crate whenever any of the
+    // included header files changed.
+    // .parse_callbacks(Box::new(bindgen::CargoCallbacks))
+    // Finish the builder and generate the bindings.
     let bindings = bindings
-    .allowlist_var("MCL_.*")
-    .allowlist_type("MCL_.*")
-    .allowlist_type("mcl_.*")
-    .allowlist_function("mcl_.*");
-    #[cfg(feature="shared_mem")]
+        .allowlist_var("MCL_.*")
+        .allowlist_type("MCL_.*")
+        .allowlist_type("mcl_.*")
+        .allowlist_function("mcl_.*");
+    #[cfg(feature = "shared_mem")]
     let bindings = bindings.clang_arg("-DMCL_SHARED_MEM");
-    let bindings =bindings.generate()
+    let bindings = bindings
+        .generate()
         // Unwrap the Result and panic on failure.
         .expect("Unable to generate bindings");
 
@@ -341,14 +357,14 @@ fn main() {
     // Tell rustcc where to look for libraries to link (-l in gcc)
     println!("cargo:rustc-link-lib=mcl");
     println!("cargo:rustc-link-lib=mcl_sched");
-    #[cfg(not(target_os="macos"))]
+    #[cfg(not(target_os = "macos"))]
     println!("cargo:rustc-link-lib=OpenCL");
-    #[cfg(target_os="macos")]
+    #[cfg(target_os = "macos")]
     println!("cargo:rustc-link-lib=framework=OpenCL");
     // Tell rustcc where to look for libraries to link (-L in gcc)
     println!("cargo:rustc-link-search={}/lib/", mcl_path);
-    println!("{:?}",ocl_libpath);
+    println!("{:?}", ocl_libpath);
     if !ocl_libpath.is_empty() {
-        println!("cargo:rustc-link-search={}",ocl_libpath);
+        println!("cargo:rustc-link-search={}", ocl_libpath);
     }
 }

@@ -1,18 +1,17 @@
-use libmcl_sys::mcl_initiate_scheduler;
 use clap::{Parser, ValueEnum};
-
+use libmcl_sys::mcl_initiate_scheduler;
 
 use std::ffi::CString;
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, ValueEnum)]
-enum SchedClass{
+enum SchedClass {
     /// First in first out scheduler
     Fifo,
     Fffs,
 }
 
-impl SchedClass{
-    fn as_string(&self) -> String{
+impl SchedClass {
+    fn as_string(&self) -> String {
         let mut out = String::from(" -s ");
         match self {
             SchedClass::Fifo => out += "fifo ",
@@ -22,8 +21,8 @@ impl SchedClass{
     }
 }
 
-#[derive(Copy, Clone,Debug, PartialEq, Eq, PartialOrd, Ord, ValueEnum)]
-enum ResourcePolicy{
+#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, ValueEnum)]
+enum ResourcePolicy {
     /// first fit
     Ff,
     /// round robin
@@ -33,8 +32,8 @@ enum ResourcePolicy{
     Lws,
 }
 
-impl ResourcePolicy{
-    fn as_string(&self) -> String{
+impl ResourcePolicy {
+    fn as_string(&self) -> String {
         let mut out = String::from(" -r ");
         match self {
             ResourcePolicy::Ff => out += "ff ",
@@ -47,12 +46,12 @@ impl ResourcePolicy{
     }
 }
 
-#[derive(Copy, Clone,Debug, PartialEq, Eq, PartialOrd, Ord, ValueEnum)]
-enum EvictPolicy{
+#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, ValueEnum)]
+enum EvictPolicy {
     Lru,
 }
-impl EvictPolicy{
-    fn as_string(&self) -> String{
+impl EvictPolicy {
+    fn as_string(&self) -> String {
         let mut out = String::from(" -e ");
         match self {
             EvictPolicy::Lru => out += "lru ",
@@ -61,9 +60,9 @@ impl EvictPolicy{
     }
 }
 
-#[derive(Parser,Debug)]
+#[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
-struct MclSchedCli{
+struct MclSchedCli {
     #[arg(short, long, value_enum, default_value_t = SchedClass::Fifo)]
     sched_class: SchedClass,
     #[arg(short, long, value_enum, default_value = "ff")]
@@ -72,20 +71,21 @@ struct MclSchedCli{
     evict_policy: EvictPolicy,
 }
 
-impl MclSchedCli{
-    fn as_c_str(&self) -> CString{
+impl MclSchedCli {
+    fn as_c_str(&self) -> CString {
         let mut args = String::new();
         args += &self.sched_class.as_string();
-        if let Some(res_policy) = self.res_policy{
+        if let Some(res_policy) = self.res_policy {
             args += &res_policy.as_string();
         }
         args += &self.evict_policy.as_string();
         CString::new(args).expect("Error converting string to CString")
-    } 
+    }
 }
-
 
 fn main() {
     let cli = MclSchedCli::parse();
-    unsafe { mcl_initiate_scheduler(0,&mut cli.as_c_str().into_raw());}
+    unsafe {
+        mcl_initiate_scheduler(0, &mut cli.as_c_str().into_raw());
+    }
 }

@@ -1,4 +1,3 @@
-
 // use rand::Rng;
 // use std::fs::File;
 // use std::io::prelude::*;
@@ -10,7 +9,6 @@
 
 //     return c;
 // }
-
 
 // fn read_pgm_file(path: &str, buffer: &mut Vec::<f32>) -> std::io::Result<()> {
 
@@ -29,7 +27,7 @@
 //     while get_c(&contents, &mut idx) as char != '\n' {}
 //     while get_c(&contents, &mut idx) as char == '#' {
 //         while get_c(&contents, &mut idx) as char != '\n' {
-//         } 
+//         }
 //     }
 //     idx -= 1;
 //     let mut h: usize = 0;
@@ -61,10 +59,6 @@
 //     //     }
 //     //     println!("");
 //     // }
-
-
-
-
 
 //     Ok(())
 // }
@@ -103,7 +97,6 @@
 //         read_pgm_file(&img_name, &mut vin[i]).expect("Error");
 //     }
 
-
 //     let pes : [u64; 3] = [1, 1, 1];
 //     let mut rng = rand::thread_rng();
 //     for r in 0..REP {
@@ -133,6 +126,6 @@
 //     }
 // }
 
-fn main(){
+fn main() {
     println!("todo");
 }

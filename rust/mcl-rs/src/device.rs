@@ -1,10 +1,8 @@
 use libmcl_sys::MCL_DEV_DIMS;
 
-pub const DEV_DIMS :u32 = MCL_DEV_DIMS;
+pub const DEV_DIMS: u32 = MCL_DEV_DIMS;
 #[allow(unused_imports)]
-use std::ffi::{CString};
-
-
+use std::ffi::CString;
 
 #[derive(Clone, Copy, serde::Serialize, serde::Deserialize)]
 pub enum DevType {
@@ -27,10 +25,10 @@ pub struct DevInfo {
     pub vendor: String,
     /// Device class 0: None, 1: CPU, 2: GPU
     pub class: u64,
-    /// Device status 
+    /// Device status
     pub status: u64,
     /// Device total amount of memory available
-    pub  mem_size: u64, 
+    pub mem_size: u64,
     /// Device number of processing elements (PEs)
     pub pes: u64,
     /// Device number of dimensions
@@ -38,5 +36,5 @@ pub struct DevInfo {
     /// Device workgroup max size
     pub wgsize: u64,
     /// Device max size per dimension
-    pub wisize: Vec::<usize>
+    pub wisize: Vec<usize>,
 }

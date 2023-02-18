@@ -25,7 +25,7 @@ pub enum PrgType {
 ///
 /// Programs must be loaded into the MCL environment using the [Prog::load] function.
 /// # Example
-///``` 
+///```
 /// use mcl_rs::{MclEnvBuilder,PrgType};
 ///
 /// let mcl = MclEnvBuilder::new().num_workers(10).initialize();
@@ -34,23 +34,22 @@ pub enum PrgType {
 ///     .with_compile_args("-D MYDEF")
 ///     .load();
 /// ```
-pub struct Prog{
+pub struct Prog {
     prog_path: String,
     compile_args: String,
     program_type: PrgType,
 }
 
-impl Prog{
-
+impl Prog {
     /// Creates a new mcl prog from the given path
-    /// 
+    ///
     /// ## Arguments
-    /// 
+    ///
     /// * `prog_path` - The path to the file where the kernel resides
-    /// 
+    ///
     /// Returns a new Prog that can be compiled
     pub(crate) fn from(prog_path: &str, prog_type: PrgType) -> Self {
-        Prog{
+        Prog {
             prog_path: prog_path.to_string(),
             compile_args: "".to_string(),
             program_type: prog_type,
@@ -58,9 +57,9 @@ impl Prog{
     }
 
     /// Loads the program into the current MCL environment
-    /// 
+    ///
     /// # Example
-    ///``` 
+    ///```
     /// use mcl_rs::{MclEnvBuilder,PrgType};
     ///
     /// let mcl = MclEnvBuilder::new().num_workers(10).initialize();
@@ -70,17 +69,17 @@ impl Prog{
     /// // alternatively it is common to call 'load' directly on 'create_prog'
     ///  mcl.create_prog("my_path2",PrgType::Src).load();
     /// ```
-    pub fn load(self){
-        low_level::prg_load(&self.prog_path,&self.compile_args, self.program_type);
+    pub fn load(self) {
+        low_level::prg_load(&self.prog_path, &self.compile_args, self.program_type);
     }
 
     /// Allows specifiy arguments to pass to the compiler when compiling the kernels within this program
-    /// 
-    /// 
+    ///
+    ///
     /// Returns a new CompiledTask
-    /// 
+    ///
     /// # Example
-    ///``` 
+    ///```
     /// use mcl_rs::{MclEnvBuilder,PrgType};
     ///
     /// let mcl = MclEnvBuilder::new().num_workers(10).initialize();
