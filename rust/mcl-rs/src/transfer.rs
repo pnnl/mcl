@@ -33,8 +33,6 @@ impl<'a> Transfer<'a> {
 
     /// Adds an argument to be transferred by this request
     ///
-    /// ## Arguments
-    /// * ` arg` - The argument to be transferred enclosed in a mcl_rs::TaskArg
     ///
     /// Returns the Transfer object
     ///
@@ -60,7 +58,7 @@ impl<'a> Transfer<'a> {
                 low_level::transfer_set_local(self.c_handle, self.curr_arg as u64, *x, 0, arg.flags)
             }
             #[cfg(feature="shared_mem")]
-            TaskArgData::Shared(..) => panic!("must use arg_shared_buffer api "),
+            TaskArgData::Shared(..) => panic!("must use arg_shared api "),
             TaskArgData::Empty => panic!("cannot have an empty arg"),
         }
         self.args[self.curr_arg] = arg;
@@ -94,9 +92,14 @@ impl<'a> Transfer<'a> {
     }
 
     /// Submit the transfer request
+    /// This is an asynchronous operation, meaning that no work is actually performed until
+    /// the returned future is actually `await`ed.
+    /// While awaiting a transfer execution, the user application will not make forward progress until
+    /// the underylying device has executed the transfer.
+    /// Upon return from the await call, any data is gauranteed to be written to its approriate buffer.
     ///
-    /// Returns a TransferHandle that can be queried for completion
-    ///
+    /// Transfer execution order can be enforced by sequentially awaiting tasks, or may be executed simultaneously
+    /// using data structures such as Join_all <https://docs.rs/futures/latest/futures/future/fn.join_all.html>
     /// # Examples
     ///```no_run     
     ///     let mcl = mcl_rs::MclEnvBuilder::new().initialize();
@@ -109,6 +112,36 @@ impl<'a> Transfer<'a> {
     ///                 .dev(mcl_rs::DevType::CPU)
     ///                 .exec();
     ///     futures::executor::block_on(t_hdl);
+    ///```
+    ///```no_run
+    ///     let mcl = mcl_rs::MclEnvBuilder::new().num_workers(10).initialize();
+    ///     mcl.load_prog("my_path", mcl_rs::PrgType::Src);
+    ///     let data = vec![0; 4];
+    ///     let pes: [u64; 3] = [1, 1, 1];
+    ///     let t1 =mcl.transfer(1, 1)
+    ///                 .arg(mcl_rs::TaskArg::input_slice(&data))
+    ///                 .dev(mcl_rs::DevType::CPU)
+    ///                 .exec(); //this creates a future we need to await
+    ///     let t2 = mcl.transfer(1, 1)
+    ///                 .arg(mcl_rs::TaskArg::input_slice(&data))
+    ///                 .dev(mcl_rs::DevType::CPU)
+    ///                 .exec(); //this creates a future we need to await
+    ///     let sequential_tasks = async move{
+    ///         t1.await; //task will execute before task 2 is even submitted
+    ///         t2.await;
+    ///     }
+    ///     futures::executor::block_on(sequential_tasks);
+    ///     
+    ///     let t3 = mcl.transfer(1, 1)
+    ///                 .arg(mcl_rs::TaskArg::input_slice(&data))
+    ///                 .dev(mcl_rs::DevType::CPU)
+    ///                 .exec(); //this creates a future we need to await
+    ///     let t4 = mcl.transfer(1, 1)
+    ///                 .arg(mcl_rs::TaskArg::input_slice(&data))
+    ///                 .dev(mcl_rs::DevType::CPU)
+    ///                 .exec(); //this creates a future we need to await
+    ///     let simultaneous_tasks = futures::future::join_all([t3,t4]);
+    ///     futures::executor::block_on(simultaneous_tasks); //both tasks submitted "simultaneously" 
     ///```
     pub async fn exec(self) {
         assert_eq!(self.curr_arg, self.args.len());

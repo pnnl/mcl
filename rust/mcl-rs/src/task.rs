@@ -234,7 +234,7 @@ impl<'a> Task<'a> {
     /// the underylying device has executed the task and performed any necessary data transfers.
     /// Upon return from the await call, any output data is gauranteed to be written to its approriate buffer.
     ///
-    /// Task execution order can be enforced be sequentially awaiting tasks, or may be executed simultaneous
+    /// Task execution order can be enforced by sequentially awaiting tasks, or may be executed simultaneously
     /// using data structures such as Join_all <https://docs.rs/futures/latest/futures/future/fn.join_all.html>
     /// # Examples
     ///     
