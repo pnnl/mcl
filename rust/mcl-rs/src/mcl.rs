@@ -1,3 +1,5 @@
+#![cfg_attr(all(doc, CHANNEL_NIGHTLY), feature(doc_auto_cfg))]
+
 use crate::low_level;
 use crate::low_level::{TaskOpt};
 #[cfg(feature = "shared_mem")]
@@ -57,11 +59,6 @@ impl MclEnvBuilder {
 
     /// Set the num_workers to pass to the mcl initialization function
     ///
-    /// ## Arguments
-    ///
-    /// * `num_workers` - The num_workers to pass to MCL
-    ///
-    /// Returns the MclEnvBuilder with the num_workers set
     ///
     /// # Examples
     ///```
@@ -78,13 +75,7 @@ impl MclEnvBuilder {
         self
     }
 
-    /// Set the num_workers to pass to the mcl initialization function
-    ///
-    /// ## Arguments
-    ///
-    /// * `num_workers` - The num_workers to pass to MCL
-    ///
-    /// Returns the MclEnvBuilder with the num_workers set
+    /// Bind worker threads to their own core
     ///
     /// # Examples
     ///```
@@ -120,18 +111,9 @@ impl MclEnvBuilder {
 }
 
 /// Represents an initialize MCL environment. When this struct goes out of scope the MCL environment is finalized.
-/// Thus, there is no need to explicitly call the equivalent of mcl_finit()
+/// Thus, there is no need to explicitly call the equivalent of the (c-api) mcl_finit()
 pub(crate) struct MclEnv;
 
-// impl MclEnv {
-//     fn get_ndev(&self) -> usize {
-//         return  low_level::get_ndev() as usize;
-//     }
-//     pub fn get_dev(&self, id: usize) -> DevInfo {
-
-//         low_level::get_dev(id as u32)
-//     }
-// }
 
 impl Drop for MclEnv {
     /// Finalizes mcl when MclEnv goes out of scope
@@ -141,7 +123,7 @@ impl Drop for MclEnv {
 }
 
 /// Represents an initialize MCL environment. When this struct goes out of scope the MCL environment is finalized.
-/// Thus, there is no need to explicitly call the equivalent of mcl_finit()
+/// Thus, there is no need to explicitly call the equivalent of (c-api) mcl_finit()
 pub struct Mcl {
     pub(crate) _env: MclEnv,
 }
@@ -149,7 +131,7 @@ pub struct Mcl {
 impl Mcl {
     /// Creates a new mcl prog from the given source file pointed to by `prog_path` and the specified Program Type [crate::prog::PrgType].
     ///
-    /// Returns a new [Prog][crate::prog::Prog] that can be loaded into the current mcl environment
+    /// Returns a new [Prog][crate::prog::Prog] that can be loaded into the current mcl environment (that is [load()][crate::prog::Prog::load] will need to be called on it at a later time).
     ///
     /// # Examples
     ///```no_run
@@ -194,9 +176,12 @@ impl Mcl {
         Task::new(kernel_name_cl, nargs, TaskOpt::EMPTY)
     }
 
-    /// Creates a new mcl task from the given kernel.
+    /// Creates a new mcl shared task from the given kernel.
     ///
     /// This kernel must exist in a previously loaded [Prog][crate::prog::Prog].
+    ///
+    /// Other processes will be able to attach to this task by its shared task ID
+    /// i.e. [crate::task::Task::shared_id]
     ///
     /// Returns a new Task representing this kernel
     /// # Examples
@@ -207,13 +192,14 @@ impl Mcl {
     ///
     ///     let t = mcl.shared_task("my_kernel", 2);
     ///```
+    #[cfg(feature = "shared_mem")]
     pub fn shared_task<'a>(&self, kernel_name_cl: &str, nargs: usize) -> Task<'a> {
         Task::new(kernel_name_cl, nargs, TaskOpt::SHARED)
     }
 
     /// Creates a new mcl shared task from the given process id and unique task id.
     ///
-    /// This task must have been created by process pid
+    /// This task must have been created by process `pid`
     /// # Examples
     ///
     ///```no_run
@@ -241,10 +227,50 @@ impl Mcl {
         Transfer::new(nargs, ncopies, 0)
     }
 
+    /// Register the provided `arg` as a buffer for future use with MCL resident memory
+    ///
+    /// # Panics
+    ///
+    /// This call will panic if the provided TaskArg was not created from one of the slice variants:
+    /// [input_slice][crate::task::TaskArg::input_slice]
+    /// [output_slice][crate::task::TaskArg::output_slice]
+    /// [inout_slice][crate::task::TaskArg::inout_slice]
+    ///
+    /// Further this call will also panic if the argument [residient][crate::task::TaskArg::resident()] property was not set to true.
+    ///
+    /// # Examples
+    ///```no_run     
+    ///     let mcl = mcl_rs::MclEnvBuilder::new().initialize();
+    ///     mcl.load_prog("my_prog",mcl_rs::PrgType::Src);
+    ///
+    ///     let mut a = vec![1;100];
+    ///     let buffer = mcl.register_buffer(mcl_rs::TaskArg::inout_slice(& mut a).resident(true));
+    ///```
     pub fn register_buffer<'a>(&self, arg: TaskArg<'a>) -> RegisteredBuffer<'a> {
         RegisteredBuffer::new(arg)
     }
 
+    /// Creates a buffer that can be accessed via shared memory from multiple processes.
+    /// If using only the "shared_mem" feature this buffer will be shared only in host memory.
+    /// If the "pocl_extensions" feature is enabled, and the patched version of POCL 1.8 has been succesfully
+    /// installed (please see <https://github.com/pnnl/mcl/tree/dev#using-custom-pocl-extensions> for more information)
+    ///
+    /// # Panics
+    ///
+    /// This call will panic if the provided TaskArg was not created from one of the shared variants:
+    /// [input_shared][crate::task::TaskArg::input_shared]
+    /// [output_shared][crate::task::TaskArg::output_shared]
+    /// [inout_shared][crate::task::TaskArg::inout_shared]
+    ///
+    ///
+    /// # Examples
+    ///```no_run     
+    ///     let mcl = mcl_rs::MclEnvBuilder::new().initialize();
+    ///     mcl.load_prog("my_prog",mcl_rs::PrgType::Src);
+    ///     let num_elems = 100;
+    ///
+    ///     let buffer = mcl.create_shared_buffer(mcl_rs::TaskArg::inout_shared::<f32>("my_buffer",num_elems).resident(true));
+    ///```
     #[cfg(feature = "shared_mem")]
     pub fn create_shared_buffer(&self, mut arg: TaskArg<'_>) -> SharedMemBuffer {
         arg.flags |= ArgOpt::SHARED_MEM_NEW
@@ -255,36 +281,39 @@ impl Mcl {
         SharedMemBuffer::new(arg)
     }
 
+
+    /// Attaches to a shared buffer that was previously created by another process
+    /// If using only the "shared_mem" feature this buffer will be shared only in host memory.
+    /// If the "pocl_extensions" feature is enabled, and the patched version of POCL 1.8 has been succesfully
+    /// installed (please see <https://github.com/pnnl/mcl/tree/dev#using-custom-pocl-extensions> for more information)
+    ///
+    /// The provided `TaskArg` should have been constructed with identical arguments to the original buffer
+    ///
+    /// # Panics
+    ///
+    /// This call will panic if the provided TaskArg was not created from one of the shared variants:
+    /// [input_shared][crate::task::TaskArg::input_shared]
+    /// [output_shared][crate::task::TaskArg::output_shared]
+    /// [inout_shared][crate::task::TaskArg::inout_shared]
+    ///
+    ///
+    /// # Examples
+    ///```no_run     
+    ///     let mcl = mcl_rs::MclEnvBuilder::new().initialize();
+    ///     mcl.load_prog("my_prog",mcl_rs::PrgType::Src);
+    ///     let num_elems = 100;
+    ///
+    ///     let buffer = mcl.attach_shared_buffer(mcl_rs::TaskArg::inout_shared::<f32>("my_buffer",num_elems).resident(true));
+    ///```
     #[cfg(feature = "shared_mem")]
     pub fn attach_shared_buffer(&self, mut arg: TaskArg<'_>) -> SharedMemBuffer {
         arg.flags |= ArgOpt::DYNAMIC | ArgOpt::RESIDENT;
         SharedMemBuffer::new(arg)
     }
 
-    // /// Registers `buf` as an MCL buffer object for future use with MCL resident memory
-    // ///
-    // /// Use of this method allows exploitation of subbuffers using offsets. When MCL sees this buffer in a task
-    // /// It will know that it is a reference to this section of memory, and it will use the same device allocation,
-    // /// using only a portion of a large device buffer if necessary
-    // ///
-    // /// # Examples
-    // ///```no_run
-    // ///     let mcl = mcl_rs::MclEnvBuilder::new().initialize();
-    // ///     let data = vec![0;100000];
-    // ///
-    // ///     let tr = mcl.buffer(&data);
-    // ///```
-    // pub fn buffer<T>(&self,nargs: usize, ncopies: usize) -> Buffer{
-    //     Transfer::new(nargs,ncopies,0)
-    // }
 
-    /// Get the info of a specific device
+    /// Returns the info of the device specified by `id`
     ///
-    /// ## Arguments
-    ///
-    /// * `id` - The ID of the device to retrieve info for
-    ///
-    /// Returns the info of specificed device
     ///```no_run
     ///     let mcl = mcl_rs::MclEnvBuilder::new().num_workers(10).initialize();
     ///
@@ -294,9 +323,8 @@ impl Mcl {
         low_level::get_dev(id)
     }
 
-    /// Get the number of devices in the system
+    /// Return the number of devices in the system
     ///
-    /// Returns the number of devices available
     ///```no_run
     ///     let mcl = mcl_rs::MclEnvBuilder::new().initialize();
     ///     let num_dev = mcl.get_ndev();
@@ -304,23 +332,4 @@ impl Mcl {
     pub fn get_ndev(&self) -> u32 {
         low_level::get_ndev()
     }
-
-    // /// Wait for all pending tasks to complete
-    // ///
-    // /// # Examples
-    // ///```no_run
-    // ///     let mcl = mcl_rs::MclEnvBuilder::new().initialize();
-    // ///     mcl.load_prog("my_prog",mcl_rs::PrgType::Src);
-    // ///
-    // ///     let data = vec![0; 4];
-    // ///     let pes: [u64; 3] = [1, 1, 1];
-    // ///     let hdl =  mcl.task("my_kernel", 1)
-    // ///                 .arg(mcl_rs::TaskArg::input_slice(&data).write_only(true))
-    // ///                 .exec(pes);
-    // ///     mcl.wait_all();
-    // ///```
-    // pub fn wait_all(&self) {
-    //     low_level::wait_all()
-
-    // }
 }
