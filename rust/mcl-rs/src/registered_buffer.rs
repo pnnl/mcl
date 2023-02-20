@@ -167,7 +167,7 @@ impl<'a> RegisteredBuffer<'a> {
         match &data.data {
             TaskArgData::Scalar(_) => panic!("cannot register a scalar"),
             TaskArgData::Buffer(x) => low_level::register_buffer(x, data.flags),
-            TaskArgData::Local(_) => panic!("Must register a buffer"),
+            // TaskArgData::Local(_) => panic!("Must register a buffer"),
             #[cfg(feature="shared_mem")]
             TaskArgData::Shared(..) => {
                 panic!("Use shared_buffer the create/attach to a shared buffer")

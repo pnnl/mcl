@@ -243,12 +243,12 @@ pub(crate) fn task_set_arg(hdl: *mut mcl_handle, argid: u64, arg: &[u8], flags: 
     }
 }
 
-pub(crate) fn task_set_local(hdl: *mut mcl_handle, argid: u64, mem_size: usize, flags: ArgOpt) {
-    let err = unsafe { mcl_task_set_arg(hdl, argid, null_mut(), mem_size as u64, flags.bits()) };
-    if err != 0 {
-        panic!("Error {}. Could not set argument for TaskHandle", err);
-    }
-}
+// pub(crate) fn task_set_local(hdl: *mut mcl_handle, argid: u64, mem_size: usize, flags: ArgOpt) {
+//     let err = unsafe { mcl_task_set_arg(hdl, argid, null_mut(), mem_size as u64, flags.bits()) };
+//     if err != 0 {
+//         panic!("Error {}. Could not set argument for TaskHandle", err);
+//     }
+// }
 // -- End set arg calls --
 
 /// same as task_set_arg but for mcl buffers
@@ -351,17 +351,17 @@ pub(crate) fn exec(
     }
 }
 
-/// Complete the task without executing  (i.e. trigger dependencies)
-///
-/// ## Arguments
-///
-/// * `hdl` - The task handle to complete
-pub(crate) fn null(hdl: *mut mcl_handle) {
-    let err = unsafe { mcl_null(hdl) };
-    if err != 0 {
-        panic!("Error {}. Null task failed", err);
-    }
-}
+// /// Complete the task without executing  (i.e. trigger dependencies)
+// ///
+// /// ## Arguments
+// ///
+// /// * `hdl` - The task handle to complete
+// pub(crate) fn null(hdl: *mut mcl_handle) {
+//     let err = unsafe { mcl_null(hdl) };
+//     if err != 0 {
+//         panic!("Error {}. Null task failed", err);
+//     }
+// }
 
 /// Frees data associated with the task handle
 ///
@@ -437,27 +437,27 @@ pub(crate) fn transfer_set_arg(
     }
 }
 
-pub(crate) fn transfer_set_local(
-    t_hdl: *mut mcl_transfer,
-    idx: u64,
-    size: usize,
-    offset: isize,
-    flags: ArgOpt,
-) {
-    let err = unsafe {
-        mcl_transfer_set_arg(
-            t_hdl,
-            idx,
-            null_mut(),
-            size as u64,
-            offset as i64,
-            flags.bits(),
-        )
-    };
-    if err != 0 {
-        panic!("Error {}. Could not set transfer argument", err);
-    }
-}
+// pub(crate) fn transfer_set_local(
+//     t_hdl: *mut mcl_transfer,
+//     idx: u64,
+//     size: usize,
+//     offset: isize,
+//     flags: ArgOpt,
+// ) {
+//     let err = unsafe {
+//         mcl_transfer_set_arg(
+//             t_hdl,
+//             idx,
+//             null_mut(),
+//             size as u64,
+//             offset as i64,
+//             flags.bits(),
+//         )
+//     };
+//     if err != 0 {
+//         panic!("Error {}. Could not set transfer argument", err);
+//     }
+// }
 // -- end transfer set arg calls --
 /// Executes a transfer. Asychronously moves data
 ///

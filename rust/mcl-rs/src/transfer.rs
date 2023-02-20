@@ -54,9 +54,9 @@ impl<'a> Transfer<'a> {
             TaskArgData::Buffer(x) => {
                 low_level::transfer_set_arg(self.c_handle, self.curr_arg as u64, x, 0, arg.flags)
             }
-            TaskArgData::Local(x) => {
-                low_level::transfer_set_local(self.c_handle, self.curr_arg as u64, *x, 0, arg.flags)
-            }
+            // TaskArgData::Local(x) => {
+            //     low_level::transfer_set_local(self.c_handle, self.curr_arg as u64, *x, 0, arg.flags)
+            // }
             #[cfg(feature="shared_mem")]
             TaskArgData::Shared(..) => panic!("must use arg_shared api "),
             TaskArgData::Empty => panic!("cannot have an empty arg"),

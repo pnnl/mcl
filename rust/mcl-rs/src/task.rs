@@ -73,9 +73,9 @@ impl<'a> Task<'a> {
             TaskArgData::Buffer(x) => {
                 low_level::task_set_arg(self.c_handle, self.curr_arg as u64, x, arg.flags)
             }
-            TaskArgData::Local(x) => {
-                low_level::task_set_local(self.c_handle, self.curr_arg as u64, *x, arg.flags)
-            }
+            // TaskArgData::Local(x) => {
+            //     low_level::task_set_local(self.c_handle, self.curr_arg as u64, *x, arg.flags)
+            // }
             #[cfg(feature="shared_mem")]
             TaskArgData::Shared(..) => panic!("must use arg_shared_buffer api "),
             TaskArgData::Empty => panic!("cannot have an empty arg"),
@@ -361,7 +361,7 @@ impl<'a> Default for TaskArgOrBuf<'a> {
 pub(crate) enum TaskArgData<'a> {
     Scalar(&'a [u8]),
     Buffer(&'a [u8]),
-    Local(usize),
+    // Local(usize),
     #[cfg(feature="shared_mem")]
     Shared(String, usize),
     Empty,
@@ -372,7 +372,7 @@ impl<'a> TaskArgData<'a> {
         match self {
             TaskArgData::Scalar(x) => x.len(),
             TaskArgData::Buffer(x) => x.len(),
-            TaskArgData::Local(x) => *x,
+            // TaskArgData::Local(x) => *x,
             #[cfg(feature="shared_mem")]
             TaskArgData::Shared(_, x) => *x,
             TaskArgData::Empty => 0,

@@ -16,7 +16,7 @@ rand = "0.8.3"
 
 [build-dependencies]
 bindgen = "0.59.2"
-autotools = { git  = "https://github.com/lu-zero/autotools-rs" }
+autotools = "0.2.6"
 cc = "1.0.77"
 glob = "0.3.1"
 #cmake = "0.1.49"
