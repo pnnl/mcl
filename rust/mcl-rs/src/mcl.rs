@@ -268,7 +268,6 @@ impl Mcl {
     ///     let mcl = mcl_rs::MclEnvBuilder::new().initialize();
     ///     mcl.load_prog("my_prog",mcl_rs::PrgType::Src);
     ///     let num_elems = 100;
-    ///
     ///     let buffer = mcl.create_shared_buffer(mcl_rs::TaskArg::inout_shared::<f32>("my_buffer",num_elems).resident(true));
     ///```
     #[cfg(feature = "shared_mem")]
