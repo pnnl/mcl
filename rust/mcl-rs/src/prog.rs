@@ -12,8 +12,6 @@ pub enum PrgType {
     Bin,
     /// A Bistream, typically to be loaded to a Dataflow or CGRA architecture
     Graph,
-    // MASK,
-    // NORES
 }
 
 /// An abstration for container with the computational kernels we want to execute.
@@ -23,7 +21,7 @@ pub enum PrgType {
 /// In some cases (e.g. [PrgType::Src]), the kernels contained in a program will be compiled at runtime,
 /// we provide the option to pass along additional compiler options.
 ///
-/// Programs must be loaded into the MCL environment using the [Prog::load] function.
+/// Programs must be loaded into the MCL environment usingthe[Prog::load] function, or created and loaded simultaneously via the [mcl::load_prog()][crate::mcl::load_prog()] api.
 /// # Example
 ///```
 /// use mcl_rs::{MclEnvBuilder,PrgType};
@@ -41,13 +39,6 @@ pub struct Prog {
 }
 
 impl Prog {
-    /// Creates a new mcl prog from the given path
-    ///
-    /// ## Arguments
-    ///
-    /// * `prog_path` - The path to the file where the kernel resides
-    ///
-    /// Returns a new Prog that can be compiled
     pub(crate) fn from(prog_path: &str, prog_type: PrgType) -> Self {
         Prog {
             prog_path: prog_path.to_string(),
@@ -73,10 +64,7 @@ impl Prog {
         low_level::prg_load(&self.prog_path, &self.compile_args, self.program_type);
     }
 
-    /// Allows specifiy arguments to pass to the compiler when compiling the kernels within this program
-    ///
-    ///
-    /// Returns a new CompiledTask
+    /// Allows one to specifiy arguments to pass to the compiler when compiling the kernels within this program
     ///
     /// # Example
     ///```
