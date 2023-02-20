@@ -1,12 +1,12 @@
 # mcl-rs
-This project hosts the high-level wrappers of the mcl rust bindings.
+This project hosts the high-level wrappers of the MCL rust bindings.
 
 ## Summary
-This crate provides high-level, rust-friendly bindings for mcl. The purpose of these bindings are
-to expose a user-friendlier API to what the low-level libmcl-sys API offers. It provides wrappers
-for all mcl public functions and tries to provide safety at compilation type, however,
+This crate provides high-level, rust-friendly bindings for MCL. The purpose of these bindings are
+to expose a user-friendlier (and safer) API to what the low-level libmcl-sys API offers. It provides wrappers
+for most mcl public functions and tries to provide safety at compilation type, however,
 because of the nature of the library counting on a C project there are cases that it's only possible
-to catch errors at runtime.
+to catch errors at runtime, as well as a few APIS that currently cannot be checked at all and are thus marked unsafe (but are protected by a feature flag).
 
 
 ## Building mcl-rs
@@ -34,6 +34,12 @@ cargo install mcl_sched
 
 Note, if you have manually built MCL from the C source code, you will already have the ```mcl_sched``` binary in the MCL install directory.
 You are free to use either your manually built mcl_sched or the one installed via cargo
+
+## FEATURE FLAGS
+We re expose three feauture flags (from libmcl-rs), losely corresponding to configuration options of the underlying MCL c-library
+1.  mcl_debug - enables debug logging output from the underlying MCL c-libary
+2.  shared_mem - enables interprocess host shared memory buffers -- this enables a few unsafe APIs
+3.  pocl_extensions - enables interprocess device based shared memory buffers, requires a patched version of POCL 1.8 to have been succesfully installed (please see <https://github.com/pnnl/mcl/tree/dev#using-custom-pocl-extensions> for more information) -- this enables a few unsafe APIs
 
 ## Testing
 mcl-rs comes with a set of unit tests that can be executed with:

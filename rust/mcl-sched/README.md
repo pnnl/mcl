@@ -32,7 +32,8 @@ mcl_sched depends on the crate libmcl-sys which provides the low-level rust bind
 
 Once all dependencies have been taken care of, we can install mcl_sched.
 
-2. ```bash
+2. 
+```bash
 cargo install mcl_sched
 ```
 
@@ -42,6 +43,11 @@ mcl_sched comes with a set of unit tests that can be executed with:
 mcl_sched
 ``` 
 
+## FEATURE FLAGS
+We re expose three feauture flags (from libmcl-rs), losely corresponding to configuration options of the underlying MCL c-library
+1.  mcl_debug - enables debug logging output from the underlying MCL c-libary
+2.  shared_mem - enables interprocess host shared memory buffers -- this enables a few unsafe APIs
+3.  pocl_extensions - enables interprocess device based shared memory buffers, requires a patched version of POCL 1.8 to have been succesfully installed (please see <https://github.com/pnnl/mcl/tree/dev#using-custom-pocl-extensions> for more information) -- this enables a few unsafe APIs
 
 
 ## STATUS

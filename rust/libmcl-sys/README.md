@@ -1,5 +1,6 @@
 # libmcl-sys
 This system crate provides Rust language bindings (via the use of Bindgen) for [Minos Computing Library](https://github.com/pnnl/mcl) (MCL).
+It is highly recommended that instead of using libmcl-sys directly your instead use the higer level (and safer) [mcl-rs](https://crates.io/crates/mcl-rs) crate
 
 ## Build requirements
 - Rust
@@ -53,6 +54,12 @@ if you installed mcl_sched via cargo then you should be able to invoke directly:
  mcl_sched
 ```
 If you built mcl manually you may need to specify the path to the mcl_sched binary
+
+## FEATURE FLAGS
+We expose three feauture flags, losely corresponding to configuration options of the underlying MCL c-library
+1.  mcl_debug - enables debug logging output from the underlying c-libary
+2.  shared_mem - enables interprocess host shared memory buffers
+3.  pocl_extensions - enables interprocess device based shared memory buffers, requires a patched version of POCL 1.8 to have been succesfully installed (please see <https://github.com/pnnl/mcl/tree/dev#using-custom-pocl-extensions> for more information)
 
 ## STATUS
 MCL (and libmcl-sys) is a research prototype and still under development, thus not all intended features are yet implemented.

@@ -18,8 +18,9 @@ MCL leverages the OpenCL library and API to interface with computing devices and
 
 ## NEWS
 ----
-* June 2022: ICS'22 Tutorial 
-* February 2022: PPoPP'22 Tutorial (TBA)
+* Feb 2023: [PPoPP'23 Tutorial](https://minos-computing.github.io/tutorials/ppopp23/ppopp23.html)
+* June 2022: [ICS'22 Tutorial](https://minos-computing.github.io/tutorials/ics22/ics22.html) 
+* February 2022:  [PPoPP'22 Tutorial](https://minos-computing.github.io/tutorials/ppopp22/ppopp22.html)
 * February 2021: [PPoPP'21 Tutorial](https://minos-computing.github.io/tutorials/ppopp21/ppopp21.html)
 
 ## INSTALLATION
@@ -35,7 +36,7 @@ Building MCL requires the following libraries and headers to be installed:
 - UTHash and UTList headers (https://github.com/troydhanson/uthash)
 - libAtomicOps (https://github.com/ivmai/libatomic_ops)
 
-Headears and libraries should be installed in path that can either be reachable or specified during the configuration step.
+Headers and libraries should be installed in path that can either be reachable or specified during the configuration step.
 
 OpenCL libaries for each device should be installed in the system. Genearlly:
 
@@ -52,15 +53,6 @@ First, import the submodules:
 git submodule init
 git submodule update
 ```
-
-Next, compile NBHashMap
-
-```
-cd src/common/nbhashmap
-make CPPFLAGS=<your flags> CFLAGS=<your flags>
-```
-
-This produces an object file `nbhashmap.o` that will be linked to the MCL library. Go back to the main source directory.
 
 ### Configuration:
 
@@ -236,7 +228,7 @@ The test directory also contains OpenCL version of the tests for reference and p
 We offer two Rust crates providing bindings for MCL, the source for both crates is hosted in the [rust](https://github.com/pnnl/mcl/tree/master/rust) folder of this repository. Both crates are also available on crates.io
 * [libmcl-sys](https://github.com/pnnl/mcl/tree/master/rust/libmcl-sys) -- (https://crates.io/crates/libmcl-sys): high-level bindings through an "unsafe" interface
 * [mcl-rs](https://github.com/pnnl/mcl/tree/master/rust/mcl-rs) -- (https://crates.io/crates/mcl-rs): high-level bindings providing a "safe" interface
-* [mcl-rs](https://github.com/pnnl/mcl/tree/master/rust/mcl-sched) -- (https://crates.io/crates/mcl-sched): convenience wrapper for installing the mcl scheduler via cargo
+* [mcl-sched](https://github.com/pnnl/mcl/tree/master/rust/mcl-sched) -- (https://crates.io/crates/mcl-sched): convenience wrapper for installing the mcl scheduler via cargo
 
 ### Using Custom POCL Extensions
 As mentioned above, POCL is an open source implementation of OpenCL for CPUs and some GPUs. Any POCL version which supports OpenCL 1/2 should be inter-operable with MCL. However, we also use the open source nature of the POCL library to support extensions to the OpenCL interface which can be used by MCL. To get these extensions we provide a patch file for a specific POCL release. From the location of the mcl directory (so POCL will be installed as a sibling directory), run:
