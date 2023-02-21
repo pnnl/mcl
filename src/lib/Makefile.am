@@ -1,4 +1,4 @@
-AM_CFLAGS=-I$(srcdir)/include -I$(abs_top_srcdir)/src/common/include $(POCL_CFLAGS) -I$(abs_top_srcdir)/src/common/nbhashmap -I$(abs_top_srcdir)/deps/uthash/include 
+AM_CFLAGS=-I$(srcdir)/include -I$(abs_top_srcdir)/src/common/include $(POCL_CFLAGS) -I$(abs_top_srcdir)/src/common/nbhashmap -I$(abs_top_srcdir)/deps/uthash/include  -I$(abs_top_srcdir)/deps/libatomic_ops/src 
 
 lib_LTLIBRARIES   = libmcl.la
 libmcl_la_SOURCES = api.c core.c reqs.c program.c rdata.c kernel.c ../common/msg.c ../common/hash.c \

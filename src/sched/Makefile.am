@@ -1,4 +1,4 @@
-AM_CFLAGS=-I$(srcdir)/include -I$(abs_top_srcdir)/src/common/include -I$(abs_top_srcdir)/src/lib/include -I$(abs_top_srcdir)/src/common/nbhashmap -I$(abs_top_srcdir)/deps/uthash/include
+AM_CFLAGS=-I$(srcdir)/include -I$(abs_top_srcdir)/src/common/include -I$(abs_top_srcdir)/src/lib/include -I$(abs_top_srcdir)/src/common/nbhashmap -I$(abs_top_srcdir)/deps/uthash/include -I$(abs_top_srcdir)/deps/libatomic_ops/src
 
 lib_LTLIBRARIES   = libmcl_sched.la
 
