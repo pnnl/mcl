@@ -1,9 +1,12 @@
+#![cfg_attr(all(doc, CHANNEL_NIGHTLY), feature(doc_auto_cfg))]
 use crate::device::DevType;
 use crate::low_level;
 use crate::low_level::{ArgOpt, ReqStatus, TaskOpt};
 use crate::registered_buffer::RegisteredBuffer;
-#[cfg(feature = "shared_mem")]
+#[cfg(any(feature = "shared_mem", feature = "pocl_extensions")]
 use crate::registered_buffer::SharedMemBuffer;
+#[cfg(any(feature = "shared_mem", feature = "pocl_extensions")]
+use std::os::unix::raw::pid_t;
 use libmcl_sys::*;
 
 unsafe impl Send for Task<'_> {}
@@ -27,7 +30,7 @@ impl<'a> Task<'a> {
         let c_handle = low_level::task_create(flags);
         #[allow(unused_mut)]
         let mut id = None;
-        #[cfg(feature = "shared_mem")]
+        #[cfg(any(feature = "shared_mem", feature = "pocl_extensions")]
         if flags.contains(TaskOpt::SHARED) {
             low_level::get_shared_task_id(c_handle)
         }
@@ -146,7 +149,7 @@ impl<'a> Task<'a> {
     ///     futures::executor::block_on(mcl_future);
     ///
     ///```
-    #[cfg(feature = "shared_mem")]
+    #[cfg(any(feature = "shared_mem", feature = "pocl_extensions")]
     pub unsafe fn arg_shared_buffer(mut self, buffer: SharedMemBuffer) -> Self {
         //TODO fix the offset issue
         low_level::task_set_arg_shared_mem_buffer(self.c_handle, self.curr_arg as u64, &buffer);
@@ -273,7 +276,7 @@ impl<'a> Task<'a> {
         for arg in &self.args {
             match arg {
                 TaskArgOrBuf::RegBuf(buf) => buf.alloc().await,
-                #[cfg(feature = "shared_mem")]
+                #[cfg(any(feature = "shared_mem", feature = "pocl_extensions")]
                 TaskArgOrBuf::ShmBuf(buf) => buf.alloc().await,
                 TaskArgOrBuf::TaskArg(_) => {}
             }
@@ -293,14 +296,14 @@ impl Drop for Task<'_> {
     }
 }
 
-#[cfg(feature = "shared_mem")]
+#[cfg(any(feature = "shared_mem", feature = "pocl_extensions")]
 pub struct SharedTask {
     pid: pid_t,
     hdl_id: u32,
 }
 
 /// Represents a shared task handle, that can be use to await the completion of a task on a different process from the one which created it
-#[cfg(feature = "shared_mem")]
+#[cfg(any(feature = "shared_mem", feature = "pocl_extensions")]
 impl SharedTask {
     pub(crate) fn new(pid: pid_t, hdl_id: u32) -> SharedTask {
         SharedTask { pid, hdl_id }
@@ -347,7 +350,7 @@ impl SharedTask {
 enum TaskArgOrBuf<'a> {
     TaskArg(TaskArg<'a>),
     RegBuf(RegisteredBuffer<'a>),
-    #[cfg(feature = "shared_mem")]
+    #[cfg(any(feature = "shared_mem", feature = "pocl_extensions")]
     ShmBuf(SharedMemBuffer),
 }
 

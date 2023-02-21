@@ -33,9 +33,9 @@ dependencies = [
 
 [[package]]
 name = "autotools"
-version = "0.2.5"
+version = "0.2.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c8138adefca3e5d2e73bfba83bd6eeaf904b26a7ac1b4a19892cfe16cc7e1701"
+checksum = "aef8da1805e028a172334c3b680f93e71126f2327622faef2ec3d893c0a4ad77"
 dependencies = [
  "cc",
 ]
@@ -151,15 +151,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0d4198f73e42b4936b35b5bb248d81d2b595ecb170da0bac7655c54eedfa8da8"
 dependencies = [
  "os_str_bytes",
-]
-
-[[package]]
-name = "cmake"
-version = "0.1.49"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "db34956e100b30725f2eb215f90d4871051239535632f84fea3bc92722c66b7c"
-dependencies = [
- "cc",
 ]
 
 [[package]]
@@ -290,12 +281,13 @@ dependencies = [
 
 [[package]]
 name = "libmcl-sys"
-version = "0.1.2-rc"
+version = "0.1.2-rc1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7ba936209882ce573b6699610aecbf3efaa4c0fd70d85a58dcdce64face754cf"
 dependencies = [
  "autotools",
  "bindgen",
  "cc",
- "cmake",
  "glob",
 ]
 
@@ -316,7 +308,7 @@ dependencies = [
 
 [[package]]
 name = "mcl_sched"
-version = "0.1.0-rc"
+version = "0.1.0-rc1"
 dependencies = [
  "clap 4.0.29",
  "libmcl-sys",

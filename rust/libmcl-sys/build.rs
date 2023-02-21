@@ -1,15 +1,18 @@
 extern crate bindgen;
 
+#[cfg(not(feature = "docs-rs"))]
 use autotools;
 // use cmake;
 use std::env;
 use std::path::PathBuf;
+#[cfg(not(feature = "docs-rs"))]
 use std::process::Command;
 
 #[cfg(feature = "docs-rs")]
 fn main() {
+    
     let out_path = PathBuf::from(env::var("OUT_DIR").unwrap());
-    let mut bindings = bindgen::Builder::default()
+    let bindings = bindgen::Builder::default()
         // The input header we would like to generate
         // bindings for.
         .header("doc_minos.h")

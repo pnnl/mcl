@@ -1,3 +1,4 @@
+#![cfg_attr(all(doc, CHANNEL_NIGHTLY), feature(doc_auto_cfg))]
 use crate::low_level;
 use crate::low_level::ArgOpt;
 use crate::task::{TaskArg, TaskArgData};
@@ -338,18 +339,15 @@ impl<'a> RegisteredBuffer<'a> {
     ///                 .arg_buffer(mcl_rs::TaskArg::output_slice(sub_buf1))
     ///                 .dev(mcl_rs::DevType::CPU)
     ///                 .exec(pes);
-    ///         let task_1 = mcl.task("my_kernel", 1)
-    ///                 .arg_buffer(mcl_rs::TaskArg::output_slice(sub_buf1))
-    ///                 .dev(mcl_rs::DevType::CPU)
-    ///                 .exec(pes);
     ///         /// We can even create our next task sucessfully with the overlapping buffer because no actual work occurs until we call await
     ///         let task_2 = mcl.task("my_kernel", 1)
     ///                 .arg_buffer(mcl_rs::TaskArg::output_slice(sub_buf1))
     ///                 .dev(mcl_rs::DevType::CPU)
     ///                 .exec(pes);
-    ///         // drive both futures simultaneously -- based on the overlapping dependency, these task will in reality be executed serially
-    ///         // as the internal implementation will prevent both tasks from allocating the overlapping sub_buffer regions simultaneously
-    ///         futures::future::join_all([task_1,task_2]);
+    ///     };
+    ///     // drive both futures simultaneously -- based on the overlapping dependency, these task will in reality be executed serially
+    ///     // as the internal implementation will prevent both tasks from allocating the overlapping sub_buffer regions simultaneously
+    ///     futures::future::join_all([task_1,task_2]);
     ///     futures::executor::block_on(task);
     ///     
     ///```
@@ -407,7 +405,32 @@ impl<'a> RegisteredBuffer<'a> {
     }
 }
 
-#[cfg(feature = "shared_mem")]
+
+/// Represents an MCL shared buffer, which is essentially a pointer
+/// to data which exists in shared memory. 
+/// When only the `shared_mem` feature is turned on this buffer will exist in host shared memory only.
+/// If instead the `pocl_extensions` feature is used, the the buffer will also exist in device shared memory.
+/// Note that `pocl_extensions` requires a patched version of POCL 1.8 to have been succesfully
+/// installed (please see <https://github.com/pnnl/mcl/tree/dev#using-custom-pocl-extensions> for more information).
+/// 
+/// A shared buffer allows tasks within different processes and applications to use the same buffer. 
+/// Further, we support creating sub-buffers of a shared buffers to alleviate some  of the overhead associated with
+/// creating new buffers.
+///
+/// #Safety
+/// Given that Shared Buffers can be used by multiple processes simultaenously they should
+/// always be considered inherantly unsafe, as we are currently able to provide saftey gaurantees
+/// within a single process. Please see the discussion on saftey for [RegisteredBuffer] for details
+/// on the protections offered within a single process.
+/// Given that Shared Buffers can be used by multiple tasks and processes simultaneously, and
+/// that accelerators are often multi-threaded we try to ensure that RegisteredBuffers
+/// are safe with respect to read and write access.
+///
+/// While we are unable to enforce read/write saftey guarantees across processes, the MCL library
+/// does provide reference counting of the underlying shared memory buffer, and will release the
+/// resources once all references across all proceesses have been dropped.
+/// 
+#[cfg(any(feature = "shared_mem", feature = "pocl_extensions")]
 pub struct SharedMemBuffer {
     addr: *mut c_void,
     size: usize,
@@ -415,7 +438,7 @@ pub struct SharedMemBuffer {
     meta: BufferMetaData,
 }
 
-#[cfg(feature = "shared_mem")]
+#[cfg(any(feature = "shared_mem", feature = "pocl_extensions")]
 impl Clone for SharedMemBuffer {
     fn clone(&self) -> Self {
         self.meta.cnt.fetch_add(1, Ordering::SeqCst);
@@ -436,32 +459,7 @@ impl Clone for SharedMemBuffer {
     }
 }
 
-
-/// Represents an MCL shared buffer, which is essentially a pointer
-/// to data which exists in shared memory. 
-/// When only the `shared_mem` feature is turned on this buffer will exist in host shared memory only.
-/// If instead the `pocl_extensions` feature is used, the the buffer will also exist in device shared memory.
-/// Note that `pocl_extensions` requires a patched version of POCL 1.8 to have been succesfully
-/// installed (please see <https://github.com/pnnl/mcl/tree/dev#using-custom-pocl-extensions> for more information).
-/// 
-/// A shared buffer allows tasks within different processes and applications to use the same buffer. 
-/// Further, we support creating sub-buffers of a shared buffers to alleviate some  of the overhead associated with
-/// creating new buffers.
-///
-/// #Safety
-/// Given that Shared Buffers can be used by multiple processes simultaenously they should
-/// always be considered inherantly unsafe, as we are currently able to provide saftey gaurantees
-/// within a single process. Please see the discussion on saftey for [RegisteredBuffers] for details
-/// on the protections offered within a single process.
-/// Given that Shared Buffers can be used by multiple tasks and processes simultaneously, and
-/// that accelerators are often multi-threaded we try to ensure that RegisteredBuffers
-/// are safe with respect to read and write access.
-///
-/// While we are unable to enforce read/write saftey guarantees across processes, the MCL library
-/// does provide reference counting of the underlying shared memory buffer, and will release the
-/// resources once all references across all proceesses have been dropped.
-/// 
-#[cfg(feature = "shared_mem")]
+#[cfg(any(feature = "shared_mem", feature = "pocl_extensions")]
 impl Drop for SharedMemBuffer {
     fn drop(&mut self) {
         // println!("dropping {} {} {}",self.meta.offset,self.meta.len,self.meta.cnt.load(Ordering::SeqCst));
@@ -488,7 +486,7 @@ impl Drop for SharedMemBuffer {
     }
 }
 
-#[cfg(feature = "shared_mem")]
+#[cfg(any(feature = "shared_mem", feature = "pocl_extensions")]
 impl SharedMemBuffer {
     pub(crate) fn new(data: TaskArg<'_>) -> Self {
         let orig_type_size = data.orig_type_size;
@@ -632,9 +630,10 @@ impl SharedMemBuffer {
     ///                 .arg_buffer(mcl_rs::TaskArg::output_slice(sub_buf1))
     ///                 .dev(mcl_rs::DevType::CPU)
     ///                 .exec(pes);
-    ///         // drive both futures simultaneously -- based on the overlapping dependency, these task will in reality be executed serially
-    ///         // as the internal implementation will prevent both tasks from allocating the overlapping sub_buffer regions simultaneously
-    ///         futures::future::join_all([task_1,task_2]);
+    ///     }
+    ///     // drive both futures simultaneously -- based on the overlapping dependency, these task will in reality be executed serially
+    ///     // as the internal implementation will prevent both tasks from allocating the overlapping sub_buffer regions simultaneously
+    ///     futures::future::join_all([task_1,task_2]);
     ///     futures::executor::block_on(task);
     ///     
     ///```
@@ -685,7 +684,7 @@ impl SharedMemBuffer {
     ///     let num_elems = 100;
     ///     let buf = mcl.attach_shared_buffer(mcl_rs::TaskArg::inout_shared::<u32>("my_buffer", num_elems));
     ///     let sliced = unsafe { buf.as_slice::<u32>()};
-    ///```>
+    ///```
     pub unsafe fn as_slice<T>(&self) -> &[T] {
         assert_eq!(self.meta.len % std::mem::size_of::<T>(),0, "Leftover bytes when tryin to create slice i.e. (buffer len in bytes) % (size of T) != 0");
         std::slice::from_raw_parts(
@@ -708,7 +707,7 @@ impl SharedMemBuffer {
     ///     let num_elems = 100;
     ///     let buf = mcl.attach_shared_buffer(mcl_rs::TaskArg::inout_shared::<u32>("my_buffer", num_elems));
     ///     let slice = unsafe { buf.as_mut_slice::<u32>()};
-    ///```>
+    ///```
     pub unsafe fn as_mut_slice<T>(&self) -> &mut [T] {
         assert_eq!(self.meta.len % std::mem::size_of::<T>(),0, "Leftover bytes when tryin to create slice i.e. (buffer len in bytes) % (size of T) != 0");
         std::slice::from_raw_parts_mut(self.addr as *mut T, self.meta.len)

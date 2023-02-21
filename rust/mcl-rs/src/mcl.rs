@@ -1,18 +1,17 @@
 #![cfg_attr(all(doc, CHANNEL_NIGHTLY), feature(doc_auto_cfg))]
-
 use crate::low_level;
 use crate::low_level::{TaskOpt};
-#[cfg(feature = "shared_mem")]
+#[cfg(any(feature = "shared_mem", feature = "pocl_extensions")]
 use crate::low_level::{ArgOpt};
 
 
 // use crate::device::DevInfo;
 use crate::prog::{PrgType, Prog};
 use crate::registered_buffer::RegisteredBuffer;
-#[cfg(feature = "shared_mem")]
+#[cfg(any(feature = "shared_mem", feature = "pocl_extensions")]
 use crate::registered_buffer::SharedMemBuffer;
 use crate::task::{ Task, TaskArg};
-#[cfg(feature = "shared_mem")]
+#[cfg(any(feature = "shared_mem", feature = "pocl_extensions")]
 use crate::task::SharedTask;
 use crate::transfer::Transfer;
 
@@ -192,7 +191,7 @@ impl Mcl {
     ///
     ///     let t = mcl.shared_task("my_kernel", 2);
     ///```
-    #[cfg(feature = "shared_mem")]
+    #[cfg(any(feature = "shared_mem", feature = "pocl_extensions")]
     pub fn shared_task<'a>(&self, kernel_name_cl: &str, nargs: usize) -> Task<'a> {
         Task::new(kernel_name_cl, nargs, TaskOpt::SHARED)
     }
@@ -210,7 +209,7 @@ impl Mcl {
     ///
     ///     let t = mcl.attach_shared_task(pid,task_id);
     ///```
-    #[cfg(feature = "shared_mem")]
+    #[cfg(any(feature = "shared_mem", feature = "pocl_extensions")]
     pub fn attach_shared_task(&self, pid: i32, task_id: u32) -> SharedTask {
         SharedTask::new(pid, task_id)
     }
@@ -270,7 +269,7 @@ impl Mcl {
     ///     let num_elems = 100;
     ///     let buffer = mcl.create_shared_buffer(mcl_rs::TaskArg::inout_shared::<f32>("my_buffer",num_elems).resident(true));
     ///```
-    #[cfg(feature = "shared_mem")]
+    #[cfg(any(feature = "shared_mem", feature = "pocl_extensions")]
     pub fn create_shared_buffer(&self, mut arg: TaskArg<'_>) -> SharedMemBuffer {
         arg.flags |= ArgOpt::SHARED_MEM_NEW
             | ArgOpt::SHARED_MEM_DEL_OLD
@@ -304,7 +303,7 @@ impl Mcl {
     ///
     ///     let buffer = mcl.attach_shared_buffer(mcl_rs::TaskArg::inout_shared::<f32>("my_buffer",num_elems).resident(true));
     ///```
-    #[cfg(feature = "shared_mem")]
+    #[cfg(any(feature = "shared_mem", feature = "pocl_extensions")]
     pub fn attach_shared_buffer(&self, mut arg: TaskArg<'_>) -> SharedMemBuffer {
         arg.flags |= ArgOpt::DYNAMIC | ArgOpt::RESIDENT;
         SharedMemBuffer::new(arg)

@@ -1,3 +1,4 @@
+#![cfg_attr(all(doc, CHANNEL_NIGHTLY), feature(doc_auto_cfg))]
 use crate::device::DevType;
 use crate::low_level;
 use crate::low_level::ReqStatus;

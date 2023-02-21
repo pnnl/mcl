@@ -1,14 +1,14 @@
 use bitflags::bitflags;
 use libmcl_sys::*;
 use std::ffi::{c_void, CStr, CString};
-#[cfg(feature = "shared_mem")]
+#[cfg(any(feature = "shared_mem", feature = "pocl_extensions")]
 use std::ffi::c_char;
 use std::ptr::null_mut;
 use std::slice;
 
 use crate::prog::PrgType;
 use crate::registered_buffer::RegisteredBuffer;
-#[cfg(feature = "shared_mem")]
+#[cfg(any(feature = "shared_mem", feature = "pocl_extensions")]
 use crate::registered_buffer::SharedMemBuffer;
 
 #[derive(Clone, PartialEq)]
@@ -289,7 +289,7 @@ pub(crate) fn task_set_arg_registered_buffer(
 /// `argid` - The index of the argument
 /// `array_slice` - The data to pass
 /// `flags` - Any of the MCL_ARG_* flags. Must include one of MCL_ARG_BUFFER or MCL_ARG_SCALAR
-#[cfg(feature = "shared_mem")]
+#[cfg(any(feature = "shared_mem", feature = "pocl_extensions")]
 pub(crate) fn task_set_arg_shared_mem_buffer(
     hdl: *mut mcl_handle,
     argid: u64,
@@ -546,12 +546,12 @@ pub(crate) fn invalidate_buffer(arg: &[u8]) {
     }
 }
 
-#[cfg(feature = "shared_mem")]
+#[cfg(any(feature = "shared_mem", feature = "pocl_extensions")]
 pub(crate) fn get_shared_task_id(hdl: *mut mcl_handle) -> Option<u32> {
     Some(unsafe { mcl_task_get_sharing_id(hdl) })
 }
 
-#[cfg(feature = "shared_mem")]
+#[cfg(any(feature = "shared_mem", feature = "pocl_extensions")]
 pub(crate) fn shared_task_test(pid: i32, hdl_id: u32) -> ReqStatus {
     let req_status = unsafe { mcl_test_shared_hdl(pid as pid_t, hdl_id) } as i32;
     if req_status < 0 {
@@ -568,7 +568,7 @@ pub(crate) fn shared_task_test(pid: i32, hdl_id: u32) -> ReqStatus {
     }
 }
 
-#[cfg(feature = "shared_mem")]
+#[cfg(any(feature = "shared_mem", feature = "pocl_extensions")]
 pub(crate) fn get_shared_buffer(name: &str, size: usize, flags: ArgOpt) -> *mut c_void {
     // println!("{:?} {:?} {:?}",flags,flags.bits(),flags.bits() as i32);
     let addr = unsafe {
@@ -582,7 +582,7 @@ pub(crate) fn get_shared_buffer(name: &str, size: usize, flags: ArgOpt) -> *mut 
     addr
 }
 
-#[cfg(feature = "shared_mem")]
+#[cfg(any(feature = "shared_mem", feature = "pocl_extensions")]
 pub(crate) fn detach_shared_buffer(addr: *mut c_void) {
     unsafe { mcl_free_shared_buffer(addr) }
 }

@@ -1,3 +1,4 @@
+#![cfg_attr(all(doc, CHANNEL_NIGHTLY), feature(doc_auto_cfg))]
 //! # mcl-rs
 //! This project hosts the high-level wrappers of the mcl rust bindings.
 //!

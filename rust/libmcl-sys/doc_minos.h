@@ -21,7 +21,6 @@ extern "C"
 #include <stdint.h>
 #include <time.h>
 #include <sys/types.h>
-#include <mcl/mcl_config.h>
 
 // #ifdef __APPLE__
 // #include <OpenCL/cl.h>

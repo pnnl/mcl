@@ -1,3 +1,4 @@
+#![cfg_attr(all(doc, CHANNEL_NIGHTLY), feature(doc_auto_cfg))]
 use crate::low_level;
 
 /// The list of possible program types
@@ -21,7 +22,7 @@ pub enum PrgType {
 /// In some cases (e.g. [PrgType::Src]), the kernels contained in a program will be compiled at runtime,
 /// we provide the option to pass along additional compiler options.
 ///
-/// Programs must be loaded into the MCL environment usingthe[Prog::load] function, or created and loaded simultaneously via the [mcl::load_prog()][crate::mcl::load_prog()] api.
+/// Programs must be loaded into the MCL environment usingthe[Prog::load] function, or created and loaded simultaneously via the [Mcl::load_prog()][crate::mcl::Mcl::load_prog()] api.
 /// # Example
 ///```
 /// use mcl_rs::{MclEnvBuilder,PrgType};

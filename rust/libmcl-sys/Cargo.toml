@@ -34,4 +34,4 @@ codegen-units=1
 rpath = true
 
 [package.metadata.docs.rs]
-features = [ "docs-rs" ] # This feature will be enabled during the docs.rs build
+features = [ "docs-rs", "shared_mem" ] # This feature will be enabled during the docs.rs build
