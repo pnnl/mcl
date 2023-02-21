@@ -82,7 +82,6 @@ struct BufferMetaData {
     alloced: Arc<AtomicBool>,
 }
 
-
 /// Represents an MCL registered buffer, which is essentially a pointer
 /// to data which exists in device Resident memory. This allows multiple
 /// tasks to use the same buffer. Further, we support creating sub-buffers
@@ -107,7 +106,7 @@ struct BufferMetaData {
 ///
 /// Finally, RegisteredBuffers are reference counted objects, and will automatically free the aquired MCL resources
 /// once the last reference is dropped.
-/// 
+///
 pub struct RegisteredBuffer<'a> {
     data: TaskArg<'a>,
     meta: BufferMetaData,
@@ -169,7 +168,7 @@ impl<'a> RegisteredBuffer<'a> {
             TaskArgData::Scalar(_) => panic!("cannot register a scalar"),
             TaskArgData::Buffer(x) => low_level::register_buffer(x, data.flags),
             // TaskArgData::Local(_) => panic!("Must register a buffer"),
-            #[cfg(feature="shared_mem")]
+            #[cfg(feature = "shared_mem")]
             TaskArgData::Shared(..) => {
                 panic!("Use shared_buffer the create/attach to a shared buffer")
             }
@@ -246,7 +245,7 @@ impl<'a> RegisteredBuffer<'a> {
         self.meta.len / self.meta.orig_type_size
     }
 
-    /// Tries to unregistered a previously registered buffer. 
+    /// Tries to unregistered a previously registered buffer.
     /// This will only succeed if this is the last reference to the registered buffer.
     ///
     /// # Examples
@@ -281,7 +280,7 @@ impl<'a> RegisteredBuffer<'a> {
         }
     }
 
-    /// Tries to invalidate a previously registered buffer. 
+    /// Tries to invalidate a previously registered buffer.
     /// meaning that the data on the host has changed and needs to be recopied to the device (generally when the buffer is used for input);
     /// This will only succeed if this is the last reference to the registered buffer.
     ///
@@ -311,8 +310,7 @@ impl<'a> RegisteredBuffer<'a> {
         }
     }
 
-
-    /// Creates a sub buffer using the provided range from a given RegisteredBuffer 
+    /// Creates a sub buffer using the provided range from a given RegisteredBuffer
     /// The sub buffer essentially "locks" the elements in the provided range
     /// delaying other sub buffers executing with overlapping elements until all references to this sub buffer
     /// has been dropped.
@@ -405,15 +403,14 @@ impl<'a> RegisteredBuffer<'a> {
     }
 }
 
-
 /// Represents an MCL shared buffer, which is essentially a pointer
-/// to data which exists in shared memory. 
+/// to data which exists in shared memory.
 /// When only the `shared_mem` feature is turned on this buffer will exist in host shared memory only.
 /// If instead the `pocl_extensions` feature is used, the the buffer will also exist in device shared memory.
 /// Note that `pocl_extensions` requires a patched version of POCL 1.8 to have been succesfully
 /// installed (please see <https://github.com/pnnl/mcl/tree/dev#using-custom-pocl-extensions> for more information).
-/// 
-/// A shared buffer allows tasks within different processes and applications to use the same buffer. 
+///
+/// A shared buffer allows tasks within different processes and applications to use the same buffer.
 /// Further, we support creating sub-buffers of a shared buffers to alleviate some  of the overhead associated with
 /// creating new buffers.
 ///
@@ -429,8 +426,8 @@ impl<'a> RegisteredBuffer<'a> {
 /// While we are unable to enforce read/write saftey guarantees across processes, the MCL library
 /// does provide reference counting of the underlying shared memory buffer, and will release the
 /// resources once all references across all proceesses have been dropped.
-/// 
-#[cfg(any(feature = "shared_mem", feature = "pocl_extensions")]
+///
+#[cfg(any(feature = "shared_mem", feature = "pocl_extensions"))]
 pub struct SharedMemBuffer {
     addr: *mut c_void,
     size: usize,
@@ -438,7 +435,7 @@ pub struct SharedMemBuffer {
     meta: BufferMetaData,
 }
 
-#[cfg(any(feature = "shared_mem", feature = "pocl_extensions")]
+#[cfg(any(feature = "shared_mem", feature = "pocl_extensions"))]
 impl Clone for SharedMemBuffer {
     fn clone(&self) -> Self {
         self.meta.cnt.fetch_add(1, Ordering::SeqCst);
@@ -459,7 +456,7 @@ impl Clone for SharedMemBuffer {
     }
 }
 
-#[cfg(any(feature = "shared_mem", feature = "pocl_extensions")]
+#[cfg(any(feature = "shared_mem", feature = "pocl_extensions"))]
 impl Drop for SharedMemBuffer {
     fn drop(&mut self) {
         // println!("dropping {} {} {}",self.meta.offset,self.meta.len,self.meta.cnt.load(Ordering::SeqCst));
@@ -486,7 +483,7 @@ impl Drop for SharedMemBuffer {
     }
 }
 
-#[cfg(any(feature = "shared_mem", feature = "pocl_extensions")]
+#[cfg(any(feature = "shared_mem", feature = "pocl_extensions"))]
 impl SharedMemBuffer {
     pub(crate) fn new(data: TaskArg<'_>) -> Self {
         let orig_type_size = data.orig_type_size;
@@ -566,7 +563,6 @@ impl SharedMemBuffer {
         self.meta.len / self.meta.orig_type_size
     }
 
-
     /// Try to manually detach from this shared memory segment (i.e. decrement the global buffer reference count), this will only succeed if this is the last reference locally
     ///
     /// NOTE: Dropping a handle potentially calls this automatically provided it is the last local (to this process) reference to the buffer.
@@ -586,7 +582,7 @@ impl SharedMemBuffer {
     ///     drop(sub_buf);
     ///     assert!(buf.try_detach().is_ok())
     ///```
-    pub fn try_detach(self) -> Result<(),Self> {
+    pub fn try_detach(self) -> Result<(), Self> {
         if self.meta.cnt.fetch_sub(1, Ordering::SeqCst) == 1 {
             low_level::detach_shared_buffer(self.addr);
             Ok(())
@@ -595,8 +591,8 @@ impl SharedMemBuffer {
         }
     }
 
-    /// Creates a sub buffer using the provided range from a given SharedMemBuffer 
-    /// The sub buffer essentially "locks" the elements in the provided range 
+    /// Creates a sub buffer using the provided range from a given SharedMemBuffer
+    /// The sub buffer essentially "locks" the elements in the provided range
     /// *BUT ONLY ON THE CALLING PROCESS* (other processes will have no idea of these locked regions)
     /// delaying other (local to this process) sub buffers from executing with overlapping elements until all references to this sub buffer
     /// have been dropped.

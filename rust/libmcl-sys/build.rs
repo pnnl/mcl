@@ -10,7 +10,6 @@ use std::process::Command;
 
 #[cfg(feature = "docs-rs")]
 fn main() {
-    
     let out_path = PathBuf::from(env::var("OUT_DIR").unwrap());
     let bindings = bindgen::Builder::default()
         // The input header we would like to generate

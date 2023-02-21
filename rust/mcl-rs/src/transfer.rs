@@ -58,7 +58,7 @@ impl<'a> Transfer<'a> {
             // TaskArgData::Local(x) => {
             //     low_level::transfer_set_local(self.c_handle, self.curr_arg as u64, *x, 0, arg.flags)
             // }
-            #[cfg(feature="shared_mem")]
+            #[cfg(feature = "shared_mem")]
             TaskArgData::Shared(..) => panic!("must use arg_shared api "),
             TaskArgData::Empty => panic!("cannot have an empty arg"),
         }
@@ -142,7 +142,7 @@ impl<'a> Transfer<'a> {
     ///                 .dev(mcl_rs::DevType::CPU)
     ///                 .exec(); //this creates a future we need to await
     ///     let simultaneous_tasks = futures::future::join_all([t3,t4]);
-    ///     futures::executor::block_on(simultaneous_tasks); //both tasks submitted "simultaneously" 
+    ///     futures::executor::block_on(simultaneous_tasks); //both tasks submitted "simultaneously"
     ///```
     pub async fn exec(self) {
         assert_eq!(self.curr_arg, self.args.len());

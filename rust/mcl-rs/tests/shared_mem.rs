@@ -1,10 +1,10 @@
-#[cfg(any(feature = "shared_mem", feature = "pocl_extensions")]
+#[cfg(any(feature = "shared_mem", feature = "pocl_extensions"))]
 use fork::{fork, Fork};
 
-#[cfg(any(feature = "shared_mem", feature = "pocl_extensions")]
+#[cfg(any(feature = "shared_mem", feature = "pocl_extensions"))]
 mod shm;
 
-#[cfg(any(feature = "shared_mem", feature = "pocl_extensions")]
+#[cfg(any(feature = "shared_mem", feature = "pocl_extensions"))]
 #[test]
 fn shared_mem() {
     let num_elems = 256;

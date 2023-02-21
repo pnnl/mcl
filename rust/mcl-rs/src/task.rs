@@ -3,11 +3,11 @@ use crate::device::DevType;
 use crate::low_level;
 use crate::low_level::{ArgOpt, ReqStatus, TaskOpt};
 use crate::registered_buffer::RegisteredBuffer;
-#[cfg(any(feature = "shared_mem", feature = "pocl_extensions")]
+#[cfg(any(feature = "shared_mem", feature = "pocl_extensions"))]
 use crate::registered_buffer::SharedMemBuffer;
-#[cfg(any(feature = "shared_mem", feature = "pocl_extensions")]
-use std::os::unix::raw::pid_t;
 use libmcl_sys::*;
+#[cfg(any(feature = "shared_mem", feature = "pocl_extensions"))]
+use std::os::unix::raw::pid_t;
 
 unsafe impl Send for Task<'_> {}
 unsafe impl Sync for Task<'_> {}
@@ -30,7 +30,7 @@ impl<'a> Task<'a> {
         let c_handle = low_level::task_create(flags);
         #[allow(unused_mut)]
         let mut id = None;
-        #[cfg(any(feature = "shared_mem", feature = "pocl_extensions")]
+        #[cfg(any(feature = "shared_mem", feature = "pocl_extensions"))]
         if flags.contains(TaskOpt::SHARED) {
             low_level::get_shared_task_id(c_handle)
         }
@@ -79,7 +79,7 @@ impl<'a> Task<'a> {
             // TaskArgData::Local(x) => {
             //     low_level::task_set_local(self.c_handle, self.curr_arg as u64, *x, arg.flags)
             // }
-            #[cfg(feature="shared_mem")]
+            #[cfg(feature = "shared_mem")]
             TaskArgData::Shared(..) => panic!("must use arg_shared_buffer api "),
             TaskArgData::Empty => panic!("cannot have an empty arg"),
         }
@@ -149,7 +149,7 @@ impl<'a> Task<'a> {
     ///     futures::executor::block_on(mcl_future);
     ///
     ///```
-    #[cfg(any(feature = "shared_mem", feature = "pocl_extensions")]
+    #[cfg(any(feature = "shared_mem", feature = "pocl_extensions"))]
     pub unsafe fn arg_shared_buffer(mut self, buffer: SharedMemBuffer) -> Self {
         //TODO fix the offset issue
         low_level::task_set_arg_shared_mem_buffer(self.c_handle, self.curr_arg as u64, &buffer);
@@ -269,14 +269,14 @@ impl<'a> Task<'a> {
     ///                 .dev(mcl_rs::DevType::CPU)
     ///                 .exec(pes); //this creates a future we need to await
     ///     let simultaneous_tasks = futures::future::join_all([task_3,task_4]);
-    ///     futures::executor::block_on(simultaneous_tasks); //both tasks submitted "simultaneously" 
+    ///     futures::executor::block_on(simultaneous_tasks); //both tasks submitted "simultaneously"
     ///```
     pub async fn exec(mut self, ref mut pes: [u64; 3]) {
         assert_eq!(self.curr_arg, self.args.len());
         for arg in &self.args {
             match arg {
                 TaskArgOrBuf::RegBuf(buf) => buf.alloc().await,
-                #[cfg(any(feature = "shared_mem", feature = "pocl_extensions")]
+                #[cfg(any(feature = "shared_mem", feature = "pocl_extensions"))]
                 TaskArgOrBuf::ShmBuf(buf) => buf.alloc().await,
                 TaskArgOrBuf::TaskArg(_) => {}
             }
@@ -296,19 +296,18 @@ impl Drop for Task<'_> {
     }
 }
 
-#[cfg(any(feature = "shared_mem", feature = "pocl_extensions")]
+#[cfg(any(feature = "shared_mem", feature = "pocl_extensions"))]
 pub struct SharedTask {
     pid: pid_t,
     hdl_id: u32,
 }
 
 /// Represents a shared task handle, that can be use to await the completion of a task on a different process from the one which created it
-#[cfg(any(feature = "shared_mem", feature = "pocl_extensions")]
+#[cfg(any(feature = "shared_mem", feature = "pocl_extensions"))]
 impl SharedTask {
     pub(crate) fn new(pid: pid_t, hdl_id: u32) -> SharedTask {
         SharedTask { pid, hdl_id }
     }
-
 
     /// Await the completetion of the shared task.
     /// This is an asynchronous operation, meaning that no work is actually performed until
@@ -337,7 +336,7 @@ impl SharedTask {
     ///         t2.await;
     ///         futures::future::join_all([t3,t4]).await;
     ///     }
-    ///     futures::executor::block_on(tasks); 
+    ///     futures::executor::block_on(tasks);
     ///```
     pub async fn wait(&self) {
         while low_level::shared_task_test(self.pid, self.hdl_id) != ReqStatus::Completed {
@@ -350,7 +349,7 @@ impl SharedTask {
 enum TaskArgOrBuf<'a> {
     TaskArg(TaskArg<'a>),
     RegBuf(RegisteredBuffer<'a>),
-    #[cfg(any(feature = "shared_mem", feature = "pocl_extensions")]
+    #[cfg(any(feature = "shared_mem", feature = "pocl_extensions"))]
     ShmBuf(SharedMemBuffer),
 }
 
@@ -365,7 +364,7 @@ pub(crate) enum TaskArgData<'a> {
     Scalar(&'a [u8]),
     Buffer(&'a [u8]),
     // Local(usize),
-    #[cfg(feature="shared_mem")]
+    #[cfg(feature = "shared_mem")]
     Shared(String, usize),
     Empty,
 }
@@ -376,7 +375,7 @@ impl<'a> TaskArgData<'a> {
             TaskArgData::Scalar(x) => x.len(),
             TaskArgData::Buffer(x) => x.len(),
             // TaskArgData::Local(x) => *x,
-            #[cfg(feature="shared_mem")]
+            #[cfg(feature = "shared_mem")]
             TaskArgData::Shared(_, x) => *x,
             TaskArgData::Empty => 0,
         }
@@ -455,7 +454,7 @@ impl<'a> TaskArg<'a> {
     // ///
     // ///
     // /// # Examples
-    // ///     
+    // ///
     // ///```no_run
     // ///     let mcl = mcl_rs::MclEnvBuilder::new().initialize();
     // ///     mcl.create_prog("my_prog",mcl_rs::PrgType::Src)
@@ -465,7 +464,7 @@ impl<'a> TaskArg<'a> {
     // ///     let pes: [u64; 3] = [1, 1, 1];
     // ///     let task = mcl.task("my_kernel", 1)
     // ///                 .arg(mcl_rs::TaskArg::input_local(400));
-    // ///```  
+    // ///```
     // pub fn input_local(num_bytes: usize) -> Self {
     //     TaskArg {
     //         data: TaskArgData::Local(num_bytes),
@@ -488,7 +487,7 @@ impl<'a> TaskArg<'a> {
     ///     let task = mcl.task("my_kernel",1)
     ///                   .input_shared(buffer);
     ///```  
-    #[cfg(feature="shared_mem")]
+    #[cfg(feature = "shared_mem")]
     pub fn input_shared<T>(name: &str, size: usize) -> Self {
         TaskArg {
             data: TaskArgData::Shared(name.to_owned(), size * std::mem::size_of::<T>()),
@@ -533,7 +532,7 @@ impl<'a> TaskArg<'a> {
     ///     let task = mcl.task("my_kernel",1)
     ///                   .output_shared(buffer);
     ///```  
-    #[cfg(feature="shared_mem")]
+    #[cfg(feature = "shared_mem")]
     pub fn output_shared<T>(name: &str, size: usize) -> Self {
         TaskArg {
             data: TaskArgData::Shared(name.to_owned(), size * std::mem::size_of::<T>()),
@@ -601,7 +600,7 @@ impl<'a> TaskArg<'a> {
     ///     let task = mcl.task("my_kernel",1)
     ///                   .inout_shared(buffer);
     ///```  
-    #[cfg(feature="shared_mem")] 
+    #[cfg(feature = "shared_mem")]
     pub fn inout_shared<T>(name: &str, size: usize) -> Self {
         // println!("inout_shared: {size} {}",size*std::mem::size_of::<T>());
         TaskArg {
