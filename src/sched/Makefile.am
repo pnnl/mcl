@@ -1,4 +1,4 @@
-AM_CFLAGS=-I$(srcdir)/include -I$(top_srcdir)/src/common/include -I$(top_srcdir)/src/lib/include -I$(top_srcdir)/src/common/nbhashmap 
+AM_CFLAGS=-I$(srcdir)/include -I$(abs_top_srcdir)/src/common/include -I$(abs_top_srcdir)/src/lib/include -I$(abs_top_srcdir)/src/common/nbhashmap -I$(abs_top_srcdir)/deps/uthash/include
 
 lib_LTLIBRARIES   = libmcl_sched.la
 
@@ -18,7 +18,7 @@ mcl_sched_LDFLAGS =
 if OSX
 AM_CFLAGS+=-DCL_SILENCE_DEPRECATION
 else
-mcl_sched_LDFLAGS += -lrt -pthread -lm
+mcl_sched_LDFLAGS += -lrt -pthread -lm 
 endif 
 
 if APPLEOCL
@@ -26,6 +26,6 @@ mcl_sched_LDFLAGS += -framework OpenCL
 endif
 
 
-mcl_sched_LDADD   =  libmcl_sched.la
+mcl_sched_LDADD   =  libmcl_sched.la -lrt -lm
 
 include_HEADERS   = $(top_srcdir)/src/sched/include/minos_sched.h

@@ -1,4 +1,4 @@
-AM_CFLAGS=-I$(srcdir)/include -I$(top_srcdir)/src/common/include $(POCL_CFLAGS) -I$(top_srcdir)/src/common/nbhashmap 
+AM_CFLAGS=-I$(srcdir)/include -I$(abs_top_srcdir)/src/common/include $(POCL_CFLAGS) -I$(abs_top_srcdir)/src/common/nbhashmap -I$(abs_top_srcdir)/deps/uthash/include 
 
 lib_LTLIBRARIES   = libmcl.la
 libmcl_la_SOURCES = api.c core.c reqs.c program.c rdata.c kernel.c ../common/msg.c ../common/hash.c \
@@ -16,5 +16,6 @@ if OSX
 AM_CFLAGS+=-DCL_SILENCE_DEPRECATION
 libmcl_la_SOURCES += pbarrier.c include/pbarrier.h
 endif
-include_HEADERS   = $(top_srcdir)/src/lib/include/minos.h
-nodist_pkginclude_HEADERS = $(top_srcdir)/src/lib/include/mcl/mcl_config.h
+
+include_HEADERS   = $(abs_top_srcdir)/src/lib/include/minos.h
+nodist_pkginclude_HEADERS = $(abs_top_srcdir)/src/lib/include/mcl/mcl_config.h
