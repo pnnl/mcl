@@ -41,7 +41,7 @@
 #define MCL_RES_ARGS_MAX 16
 #define MCL_MAX_MSG_SIZE (MCL_MSG_SIZE + (MCL_RES_ARGS_MAX * sizeof(uint64_t)))
 #define MCL_MSG_MAX (MCL_RCV_BUF / MCL_MAX_MSG_SIZE)
-#define MCL_NUM_DEV_TYPES 3
+#define MCL_NUM_DEV_TYPES 4
 
 #define MSG_CMD_NEX 0x00
 #define MSG_CMD_REG 0x01
@@ -115,11 +115,13 @@
 #define MCL_DEV_MUL_CPU 1
 #define MCL_DEV_MUL_GPU 512
 #define MCL_DEV_MUL_FPGA 1
+#define MCL_DEV_MUL_DF 1
 
 // These should be adjusted based on specific device but I am not sure how to get that now
 #define MCL_DEV_MKERNELS_GPU 64 // CUDA compute capability 6.0 and 7.0
 #define MCL_DEV_MKERNELS_CPU 4
 #define MCL_DEV_MKERNELS_FPGA 4
+#define MCL_DEV_MKERNELS_DF 4
 
 #define MCL_DEV_MEM_SAFTEY_FACTOR 0.05
 #define MCL_TASK_OVERHEAD 0.1

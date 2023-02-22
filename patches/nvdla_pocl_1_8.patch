@@ -1,0 +1,1508 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 3da10e1..378a09f 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -187,6 +187,8 @@ option(ENABLE_HSA "Enable the HSA base profile runtime device driver" OFF)
+ 
+ option(ENABLE_CUDA "Enable the CUDA device driver for NVIDIA devices" OFF)
+ 
++option(ENABLE_NVDLA "Enable the NVDLA" off)
++
+ option(KERNEL_CACHE_DEFAULT "Default value for the kernel compile cache. If disabled, pocl will still use the kernel cache, but will delete cachefiles on exit. You can still enable keeping the files it at runtime with an env var." ON)
+ 
+ option(POCL_ICD_ABSOLUTE_PATH "Use absolute path in pocl.icd" ON)
+@@ -1148,6 +1150,15 @@ if(ENABLE_ACCEL_DEVICE)
+   set(OCL_DRIVERS "${OCL_DRIVERS} accel")
+ endif()
+ 
++if(ENABLE_NVDLA)
++  set(BUILD_BASIC 1)
++  set(BUILD_NVDLA 1)
++  set(OCL_DRIVERS "${OCL_DRIVERS} nvdla")
++  set(OCL_DRIVERS "${OCL_TARGETS} nvdla")
++  set(NVDLA_DEVICE_CL_VERSION "120")
++  set(NVDLA_DEVICE_CL_STD "1.2")
++endif()
++
+ if(DEFINED EXTRA_OCL_TARGETS)
+   set(OCL_TARGETS "${OCL_TARGETS} ${EXTRA_OCL_TARGETS}")
+ endif()
+@@ -1693,6 +1704,7 @@ MESSAGE(STATUS "ENABLE_TCE: ${ENABLE_TCE}")
+ MESSAGE(STATUS "ENABLE_TCEMC: ${ENABLE_TCEMC}")
+ MESSAGE(STATUS "ENABLE_HSA: ${ENABLE_HSA}")
+ MESSAGE(STATUS "ENABLE_CUDA: ${ENABLE_CUDA}")
++MESSAGE(STATUS "ENABLE_NVDLA: ${ENABLE_NVDLA}")
+ MESSAGE(STATUS "ENABLE_ASAN (address sanitizer): ${ENABLE_ASAN}")
+ MESSAGE(STATUS "ENABLE_LSAN (leak sanitizer): ${ENABLE_LSAN}")
+ MESSAGE(STATUS "ENABLE_TSAN (thread sanitizer): ${ENABLE_TSAN}")
+diff --git a/cmake/FindNvdlaEmu.cmake b/cmake/FindNvdlaEmu.cmake
+new file mode 100644
+index 0000000..8ebe3cd
+--- /dev/null
++++ b/cmake/FindNvdlaEmu.cmake
+@@ -0,0 +1,57 @@
++# This module defines the following variables:
++#
++# ::
++#
++#   NVDLAEMU_INCLUDE_DIRS
++#   NVDLAEMU_LIBS
++#   NVDLAEMU_FOUND
++#
++
++#
++# Hints
++# ^^^^^
++# A user may set ``NVLDAEMU_ROOT`` to an installation root to tell this module where to look.
++#
++
++
++
++set(_NVDLAEMU_SEARCHES)
++
++if(NVDLAEMU_ROOT)
++  set(_NVDLAEMU_SEARCH_ROOT PATHS ${NVDLAEMU_ROOT} NO_DEFAULT_PATH)
++  list(APPEND _NVDLAEMU_SEARCHES _NVDLAEMU_SEARCH_ROOT)
++endif()
++
++# appends some common paths
++set(_NVDLAEMU_SEARCH_NORMAL
++  PATHS "/usr/ /usr/local/ /usr/src/"
++)
++list(APPEND _NVDLAEMU_SEARCHES _NVDLAEMU_SEARCH_NORMAL)
++
++# Include dir
++foreach(search ${_NVDLAEMU_SEARCHES})
++  find_path(NVDLAEMU_INCLUDE_DIR NAMES Connection.h ${${search}} PATH_SUFFIXES include/nvdla_emu )
++endforeach()
++
++if(NOT NVDLAEMU_LIBRARY)
++  foreach(search ${_NVDLAEMU_SEARCHES})
++    find_library(NVDLAEMU_LIBRARY NAMES nvdla_emu ${${search}} PATH_SUFFIXES lib )
++  endforeach()
++endif()
++
++include(FindPackageHandleStandardArgs)
++FIND_PACKAGE_HANDLE_STANDARD_ARGS(NVDLAEMU REQUIRED_VARS NVDLAEMU_LIBRARY NVDLAEMU_INCLUDE_DIR )
++
++if(NVDLAEMU_FOUND)
++  set(NVDLAEMU_INCLUDE_DIRS ${NVDLAEMU_INCLUDE_DIR} )
++
++  if(NOT NVDLAEMU_LIBS)
++    set(NVDLAEMU_LIBS ${NVDLAEMU_LIBRARY})
++  endif()
++
++  if(NOT TARGET NVDLAEMU::NVDLAEMU)
++    add_library(NVDLAEMU::NVDLAEMU UNKNOWN IMPORTED)
++    set_target_properties(NVDLAEMU::NVDLAEMU PROPERTIES INTERFACE_INCLUDE_DIRECTORIES "${NVDLAEMU_INCLUDE_DIRS}")
++    set_property(TARGET NVDLAEMU::NVDLAEMU APPEND PROPERTY IMPORTED_LOCATION "${NVDLAEMU_LIBRARY}")
++  endif()
++endif()
+\ No newline at end of file
+diff --git a/cmake/FindTensorRT.cmake b/cmake/FindTensorRT.cmake
+new file mode 100644
+index 0000000..887decd
+--- /dev/null
++++ b/cmake/FindTensorRT.cmake
+@@ -0,0 +1,76 @@
++# This module defines the following variables:
++#
++# ::
++#
++#   TensorRT_INCLUDE_DIRS
++#   TensorRT_LIBRARIES
++#   TensorRT_FOUND
++#
++# ::
++#
++#   TensorRT_VERSION_STRING - version (x.y.z)
++#   TensorRT_VERSION_MAJOR  - major version (x)
++#   TensorRT_VERSION_MINOR  - minor version (y)
++#   TensorRT_VERSION_PATCH  - patch version (z)
++#
++# Hints
++# ^^^^^
++# A user may set ``TensorRT_ROOT`` to an installation root to tell this module where to look.
++#
++# Source
++# https://github.com/NVIDIA/tensorrt-laboratory/blob/master/cmake/FindTensorRT.cmake
++
++
++set(_TensorRT_SEARCHES)
++
++if(TensorRT_ROOT)
++  set(_TensorRT_SEARCH_ROOT PATHS ${TensorRT_ROOT} NO_DEFAULT_PATH)
++  list(APPEND _TensorRT_SEARCHES _TensorRT_SEARCH_ROOT)
++endif()
++
++# appends some common paths
++set(_TensorRT_SEARCH_NORMAL
++  PATHS "/usr"
++)
++list(APPEND _TensorRT_SEARCHES _TensorRT_SEARCH_NORMAL)
++
++# Include dir
++foreach(search ${_TensorRT_SEARCHES})
++  find_path(TensorRT_INCLUDE_DIR NAMES NvInfer.h ${${search}} PATH_SUFFIXES include)
++endforeach()
++
++if(NOT TensorRT_LIBRARY)
++  foreach(search ${_TensorRT_SEARCHES})
++    find_library(TensorRT_LIBRARY NAMES nvinfer ${${search}} PATH_SUFFIXES lib)
++  endforeach()
++endif()
++
++mark_as_advanced(TensorRT_INCLUDE_DIR)
++
++if(TensorRT_INCLUDE_DIR AND EXISTS "${TensorRT_INCLUDE_DIR}/NvInfer.h")
++    file(STRINGS "${TensorRT_INCLUDE_DIR}/NvInfer.h" TensorRT_MAJOR REGEX "^#define NV_TENSORRT_MAJOR [0-9]+.*$")
++    file(STRINGS "${TensorRT_INCLUDE_DIR}/NvInfer.h" TensorRT_MINOR REGEX "^#define NV_TENSORRT_MINOR [0-9]+.*$")
++    file(STRINGS "${TensorRT_INCLUDE_DIR}/NvInfer.h" TensorRT_PATCH REGEX "^#define NV_TENSORRT_PATCH [0-9]+.*$")
++
++    string(REGEX REPLACE "^#define NV_TENSORRT_MAJOR ([0-9]+).*$" "\\1" TensorRT_VERSION_MAJOR "${TensorRT_MAJOR}")
++    string(REGEX REPLACE "^#define NV_TENSORRT_MINOR ([0-9]+).*$" "\\1" TensorRT_VERSION_MINOR "${TensorRT_MINOR}")
++    string(REGEX REPLACE "^#define NV_TENSORRT_PATCH ([0-9]+).*$" "\\1" TensorRT_VERSION_PATCH "${TensorRT_PATCH}")
++    set(TensorRT_VERSION_STRING "${TensorRT_VERSION_MAJOR}.${TensorRT_VERSION_MINOR}.${TensorRT_VERSION_PATCH}")
++endif()
++
++include(FindPackageHandleStandardArgs)
++FIND_PACKAGE_HANDLE_STANDARD_ARGS(TensorRT REQUIRED_VARS TensorRT_LIBRARY TensorRT_INCLUDE_DIR VERSION_VAR TensorRT_VERSION_STRING)
++
++if(TensorRT_FOUND)
++  set(TensorRT_INCLUDE_DIRS ${TensorRT_INCLUDE_DIR})
++
++  if(NOT TensorRT_LIBRARIES)
++    set(TensorRT_LIBRARIES ${TensorRT_LIBRARY})
++  endif()
++
++  if(NOT TARGET TensorRT::TensorRT)
++    add_library(TensorRT::TensorRT UNKNOWN IMPORTED)
++    set_target_properties(TensorRT::TensorRT PROPERTIES INTERFACE_INCLUDE_DIRECTORIES "${TensorRT_INCLUDE_DIRS}")
++    set_property(TARGET TensorRT::TensorRT APPEND PROPERTY IMPORTED_LOCATION "${TensorRT_LIBRARY}")
++  endif()
++endif()
+\ No newline at end of file
+diff --git a/config.h.in.cmake b/config.h.in.cmake
+index fc1b5ae..74c5b5e 100644
+--- a/config.h.in.cmake
++++ b/config.h.in.cmake
+@@ -1,6 +1,7 @@
+ 
+ #cmakedefine BUILD_HSA
+ #cmakedefine BUILD_CUDA
++#cmakedefine BUILD_NVDLA
+ #cmakedefine BUILD_BASIC
+ #cmakedefine BUILD_PTHREAD
+ #cmakedefine BUILD_ACCEL
+diff --git a/lib/CL/devices/CMakeLists.txt b/lib/CL/devices/CMakeLists.txt
+index 4bd8398..4fb089f 100644
+--- a/lib/CL/devices/CMakeLists.txt
++++ b/lib/CL/devices/CMakeLists.txt
+@@ -107,6 +107,28 @@ if(ENABLE_CUDA)
+   endif()
+ endif()
+ 
++if(BUILD_NVDLA)
++  add_subdirectory("nvdla")
++  message("devices build nvdlaemu ${BUILD_NVDLAEMU}")
++  if(BUILD_NVDLAEMU)
++    set(POCL_DEVICES_OBJS "${POCL_DEVICES_OBJS}"
++      "$<TARGET_OBJECTS:pocl-devices-nvdlaemu>")
++    add_definitions(-DBUILD_NVDLAEMU) 
++    if(NOT ENABLE_LOADABLE_DRIVERS)
++      list(APPEND POCL_DEVICES_LINK_LIST ${NVDLAEMU_LIBS})
++    endif()
++  endif()
++  message("devices build xaiver ${BUILD_XAVIER}")
++  if(BUILD_XAVIER)
++    set(POCL_DEVICES_OBJS "${POCL_DEVICES_OBJS}"
++      "$<TARGET_OBJECTS:pocl-devices-xavier>")
++    add_definitions(-DBUILD_XAVIER) 
++    if(NOT ENABLE_LOADABLE_DRIVERS)
++      list(APPEND POCL_DEVICES_LINK_LIST ${XAVIER_LIBS})
++    endif()
++  endif()
++endif()
++
+ set(POCL_DEVICES_SOURCES
+   devices.h  devices.c
+   bufalloc.c  bufalloc.h
+diff --git a/lib/CL/devices/devices.c b/lib/CL/devices/devices.c
+index 2485785..70e2c98 100644
+--- a/lib/CL/devices/devices.c
++++ b/lib/CL/devices/devices.c
+@@ -78,6 +78,15 @@
+ #include "accel/accel.h"
+ #endif
+ 
++#if defined(BUILD_NVDLA)
++#if defined(BUILD_NVDLAEMU)
++#include "nvdla/emulator/nvdlaemu.hpp"
++#endif
++#if defined(BUILD_XAVIER)
++#include "nvdla/xavier/xavier.hpp"
++#endif
++#endif
++
+ #define MAX_DEV_NAME_LEN 64
+ 
+ #ifndef PATH_MAX
+@@ -124,6 +133,14 @@ static init_device_ops pocl_devices_init_ops[] = {
+ #ifdef BUILD_ACCEL
+   INIT_DEV (accel),
+ #endif
++#if defined(BUILD_NVDLA)
++#if defined(BUILD_NVDLAEMU)
++  INIT_DEV (nvdlaemu), 
++#endif
++#if defined(BUILD_XAVIER)
++  INIT_DEV (xavier), 
++#endif
++#endif
+ };
+ 
+ #define POCL_NUM_DEVICE_TYPES (sizeof(pocl_devices_init_ops) / sizeof((pocl_devices_init_ops)[0]))
+@@ -144,6 +161,14 @@ char pocl_device_types[POCL_NUM_DEVICE_TYPES][30] = {
+ #ifdef BUILD_CUDA
+   "cuda",
+ #endif
++#ifdef BUILD_NVDLA
++#if defined(BUILD_NVDLAEMU)
++  "nvdlaemu",
++#endif
++#endif
++#if defined(BUILD_XAVIER)
++  "xavier", 
++#endif
+ #ifdef BUILD_ACCEL
+   "accel",
+ #endif
+diff --git a/lib/CL/devices/nvdla/CMakeLists.txt b/lib/CL/devices/nvdla/CMakeLists.txt
+new file mode 100644
+index 0000000..1e2a338
+--- /dev/null
++++ b/lib/CL/devices/nvdla/CMakeLists.txt
+@@ -0,0 +1,19 @@
++add_subdirectory(emulator)
++add_subdirectory(xavier)
++
++message("nvdla build nvdlaemu ${BUILD_NVDLAEMU}")
++if(BUILD_NVDLAEMU)
++#  set(POCL_DEVICES_OBJS "${POCL_DEVICES_OBJS};$<TARGET_OBJECTS:pocl-devices-nvdlaemu>" PARENT_SCOPE)
++ set(BUILD_NVDLAEMU "1" PARENT_SCOPE)
++ set(NVDLAEMU_LIBS ${NVDLAEMU_LIBS} PARENT_SCOPE)
++endif()
++message("nvdla build xavier ${BUILD_XAVIER}")
++if(BUILD_XAVIER)
++#  set(POCL_DEVICES_OBJS "${POCL_DEVICES_OBJS};$<TARGET_OBJECTS:pocl-devices-xavier>" PARENT_SCOPE)
++ set(BUILD_XAVIER "1" PARENT_SCOPE)
++ set(XAVIER_LIBS ${XAVIER_LIBS} PARENT_SCOPE)
++endif()
++
++if(NOT BUILD_NVDLAEMU AND NOT BUILD_XAVIER)
++message(FATAL_ERROR "ENABLENVDLA=1 but neither NVDLAEMU or XAVIER will be built")
++endif()
+\ No newline at end of file
+diff --git a/lib/CL/devices/nvdla/emulator/CMakeLists.txt b/lib/CL/devices/nvdla/emulator/CMakeLists.txt
+new file mode 100644
+index 0000000..96c1239
+--- /dev/null
++++ b/lib/CL/devices/nvdla/emulator/CMakeLists.txt
+@@ -0,0 +1,24 @@
++find_package(NvdlaEmu)
++if (NVDLAEMU_FOUND)
++message(STATUS "NVDLAEMU_INCLUDE_DIRS = ${NVDLAEMU_INCLUDE_DIRS}")
++message(STATUS "NVDLAEMU_LIBS = ${NVDLAEMU_LIBS}")
++
++#add_compile_options("-std=c++11")
++set(CMAKE_CXX_STANDARD 11)
++set(CMAKE_CXX_STANDARD_REQUIRED ON)
++set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${LLVM_CXXFLAGS}")
++
++include_directories( ${NVDLAEMU_INCLUDE_DIRS} )
++# add_library("pocl-devices-nvdlaemu" OBJECT  nvdlaemu.cpp nvdlaemu.hpp)
++add_pocl_device_library(pocl-devices-nvdlaemu  nvdlaemu.cpp nvdlaemu.hpp)
++if(ENABLE_LOADABLE_DRIVERS)
++    target_link_libraries(pocl-devices-nvdlaemu PRIVATE pocl-devices-basic ${NVDLAEMU_LIBS})
++endif()
++# set(POCL_DEVICES_OBJS "${POCL_DEVICES_OBJS};$<TARGET_OBJECTS:pocl-devices-nvdlaemu>" PARENT_SCOPE)
++set(BUILD_NVDLAEMU "1" PARENT_SCOPE) 
++# set(NVDLAEMU_LIBS ${NVDLAEMU_LIBS} PARENT_SCOPE)
++endif()
++
++
++
++
+diff --git a/lib/CL/devices/nvdla/emulator/nvdlaemu.cpp b/lib/CL/devices/nvdla/emulator/nvdlaemu.cpp
+new file mode 100644
+index 0000000..b5faaac
+--- /dev/null
++++ b/lib/CL/devices/nvdla/emulator/nvdlaemu.cpp
+@@ -0,0 +1,576 @@
++
++#include "nvdlaemu.hpp"
++#include "devices.h"
++#include "pocl_cl.h"
++#include "pocl_util.h"
++
++#include "limits.h"
++
++#include <iostream>
++#include <sstream>
++#include <cctype>
++#include <algorithm>
++#include <vector>
++#include <fstream>
++#include <unordered_map>
++#include "Connection.h"
++#include "Message.h"
++/* notes:
++initially, rely on users having built nvdlaemu engines
++flag will specify if it is DLA only, GPU only, hybrid, and which of the three are available?
++
++
++in mcl instead of clCreateProgramWithSource we need to do
++clCreateProgramWithBinary, but utilizing the allow_empty binaries flag
++
++this should be able to create a program that can be used during the call to
++build program?
++
++
++instead of mcl_task_set_kernel... maybe do something like mcl_task_set_network (mcl_task_set_engine?)
++
++what is the "user facing interface"
++
++inputs: batch size, block of memory, or a path to images/data, if a path, need a way to properly injest data for the provided engine
++*/
++
++/* default WG size in each dimension & total WG size.
++ * this should be reasonable for CPU */
++#define DEFAULT_WG_SIZE 4096
++
++// class MyLogger : public nvinfer1::ILogger{
++//     void log (Severity severity, const char* msg){
++//         POCL_MSG_PRINT_INFO("nvdlaemu LOGGER: %s\n",msg);
++//     }
++// };
++
++// MyLogger logger{};
++
++struct data {
++  /* Currently loaded kernel. */
++  
++  cl_kernel current_kernel;
++
++  std::unordered_map<std::string,Connection*>* context_cache[2];
++  Connection* server;
++
++  // std::unordered_map<std::string,Connection*>*
++
++  pocl_argument_info* input_info;
++  pocl_argument_info* output_info;
++  // pocl_argument_info* network_info;
++  std::unordered_map<std::string,char*>* kernel_network_map;
++
++  pocl_kernel_metadata_t * kernel_metadata;
++
++  /* List of commands ready to be executed */
++  _cl_command_node *  ready_list;
++  /* List of commands not yet ready to be executed */
++  _cl_command_node *  command_list;
++  /* Lock for command list related operations */
++  pocl_lock_t cq_lock;
++  pocl_lock_t context_cache_lock;
++  /* printf buffer */
++  void *printf_buffer;
++};
++
++pocl_argument_info* create_arg_info(const char *TypeName, const char *Name, pocl_argument_type Type, cl_kernel_arg_address_qualifier AQ) {
++  //ARIAA_PRINT_FUNC();
++  pocl_argument_info* arg = (pocl_argument_info*)calloc(1,sizeof(pocl_argument_info));
++  arg->type = Type;
++  arg->address_qualifier = AQ;
++  arg->type_name = strdup(TypeName);
++  arg->name = strdup(Name);
++  return arg;
++}
++void destroy_arg_info(pocl_argument_info* arg){
++  //ARIAA_PRINT_FUNC();
++  free(arg->name);
++  free(arg->type_name);
++  free(arg);
++}
++
++pocl_kernel_metadata_t* create_kernel_metadata( pocl_argument_info* input, pocl_argument_info* output){ //, pocl_argument_info* network){
++  //ARIAA_PRINT_FUNC();
++  pocl_kernel_metadata_t* md = ( pocl_kernel_metadata_t* ) calloc(1,sizeof( pocl_kernel_metadata_t));
++  md->builtin_kernel=1;
++  md->name=(char*)"dataflow";
++  md->num_args=2;
++  md->arg_info = (pocl_argument_info*)calloc(3,sizeof(pocl_argument_info));
++ 
++  md->arg_info[0] = *input;
++  md->arg_info[0].name = strdup(input->name);
++  md->arg_info[0].type_name = strdup(input->type_name);
++
++  md->arg_info[1] = *output;
++  md->arg_info[1].name = strdup(output->name);
++  md->arg_info[1].type_name = strdup(output->type_name);
++
++  return md;
++}
++
++
++void pocl_nvdlaemu_init_device_ops(struct pocl_device_ops *ops) {
++    //ARIAA_PRINT_FUNC();
++    POCL_MSG_PRINT_INFO("nvdlaemu: init dev ops\n");
++    ops->device_name = "nvdlaemu";
++    ops->init = pocl_nvdlaemu_init;
++    ops->uninit = pocl_nvdlaemu_uninit;
++    ops->probe = pocl_nvdlaemu_probe;
++    ops->build_hash = pocl_nvdlaemu_build_hash;
++    // ops->supports_builtin_kernel = pocl_nvdlaemu_supports_builtin_kernel;
++    ops->setup_metadata = pocl_nvdlaemu_setup_metadata;
++
++    // /* TODO: Bufalloc-based allocation from the onchip memories. */
++    ops->alloc_mem_obj = pocl_nvdlaemu_alloc_mem_obj;
++    ops->free = pocl_nvdlaemu_free;
++    // ops->map_mem = pocl_nvdlaemu_map_mem;
++    ops->memfill = pocl_nvdlaemu_memfill;
++
++    ops->submit = pocl_nvdlaemu_submit;
++    ops->flush = ops->join = pocl_nvdlaemu_join;
++
++    ops->write = pocl_nvdlaemu_write;
++    ops->read = pocl_nvdlaemu_read;
++
++    // ops->notify = pocl_nvdlaemu_notify;
++
++    ops->broadcast = pocl_broadcast;
++    ops->run = pocl_nvdlaemu_run;
++    ops->build_builtin = pocl_nvdlaemu_build_builtin;
++}
++
++cl_int pocl_nvdlaemu_init(unsigned j, cl_device_id dev, const char *parameters) {
++  //ARIAA_PRINT_FUNC();
++  SETUP_DEVICE_CL_VERSION(1, 2);
++  dev->type = CL_DEVICE_TYPE_CUSTOM;
++  dev->long_name = (char *)"NVIDIA DLA EMULATOR";
++  dev->vendor = "pocl";
++  dev->version = "1.2";
++  dev->available = CL_TRUE;
++  dev->extensions = "";
++  dev->profile = "FULL_PROFILE";
++  dev->max_mem_alloc_size = 1024 * 1024 * 1024;
++  
++  std::cout<<"NVDLA ADDR_PORT "<<parameters<<std::endl;
++  
++  /* system mem as global memory */
++  dev->global_mem_id = 0;
++  dev->global_mem_size = (size_t)8*1024*1024*1024;
++  
++  data* d = new data();
++  d->server = NULL;
++
++  if (!parameters){
++    std::cerr<<"ERROR MUST PROVIVDE ADDRESS:PORT for NVDLA EMULATOR e.g. POCL_NVDLAEMU0_PARAMETERS=\"127.0.0.1:5555\""<<std::endl;
++    return -1;
++  }
++  std::string addr_port(parameters);
++  size_t pos = 0;
++  std::string temp = addr_port;
++  int64_t num_devices = 0;
++  int64_t max_devices = 0;
++
++  size_t pos2 = 0;
++  if ((pos2 = temp.find(":")) != std::string::npos){
++    std::string host = temp.substr(0,pos2);
++    int port = std::stoi(temp.substr(pos2+1,std::string::npos));
++    Connection* con = new Connection(host,port);
++      
++    con->lock();
++    if (sendPingMsg(con)){
++      sendInitMsg(con);
++      num_devices = getNumDevices(con);
++      max_devices = getMaxDevices(con);
++      d->server = con;
++    }else{
++      std::cerr<<"WARNING NO VALID NVDLAEMU SERVER RUNNING @"<<temp<<std::endl;
++      d->server = NULL;
++    }
++    con->unlock();
++  }
++
++  dev->max_compute_units= max_devices; //two dla cores
++  dev->available = num_devices;
++  
++  if (d == NULL)
++    return CL_OUT_OF_HOST_MEMORY;
++
++  dev->platform = 0;
++
++  dev->max_work_item_dimensions = 3;
++
++  int max_wg
++      = pocl_get_int_option ("POCL_MAX_WORK_GROUP_SIZE", DEFAULT_WG_SIZE);
++  assert (max_wg > 0);
++  max_wg = std::min (max_wg, DEFAULT_WG_SIZE);
++  if (max_wg < 0)
++    max_wg = DEFAULT_WG_SIZE;
++  dev->max_work_group_size = dev->max_work_item_sizes[0] =
++      dev->max_work_item_sizes[1] = dev->max_work_item_sizes[2] = max_wg;
++
++  d->current_kernel = NULL;
++  d->input_info = create_arg_info("char*", "input", POCL_ARG_TYPE_POINTER, CL_KERNEL_ARG_ADDRESS_GLOBAL);
++  d->output_info = create_arg_info("char*", "output", POCL_ARG_TYPE_POINTER, CL_KERNEL_ARG_ADDRESS_GLOBAL);
++  // d->network_info = create_arg_info("char*", "network", POCL_ARG_TYPE_POINTER, CL_KERNEL_ARG_ADDRESS_GLOBAL);
++  d->kernel_network_map = new std::unordered_map<std::string,char*>();
++  d->kernel_metadata = create_kernel_metadata(d->input_info,d->output_info);//,d->network_info);
++  d->context_cache[0] = new std::unordered_map<std::string,Connection*>();
++  d->context_cache[1] = new std::unordered_map<std::string,Connection*>();
++  POCL_INIT_LOCK(d->cq_lock);
++  POCL_INIT_LOCK(d->context_cache_lock);
++  dev->data = d;
++
++  dev->builtin_kernel_list = strdup(std::string("dataflow").c_str());
++
++  return CL_SUCCESS;
++}
++
++cl_int pocl_nvdlaemu_uninit(unsigned /*j*/, cl_device_id device) {//TODO need to free other things in data
++  data *d = (data *)device->data;
++  delete d->server;
++  delete d;
++  return CL_SUCCESS;
++}
++
++char *pocl_nvdlaemu_build_hash(cl_device_id device) {
++    //ARIAA_PRINT_FUNC();
++  char *res = (char *)calloc(1000, sizeof(char));
++#ifdef KERNELLIB_HOST_DISTRO_VARIANTS
++  char *name = get_llvm_cpu_name();
++  snprintf(res, 1000, "nvdlaemu-%s-%s", HOST_DEVICE_BUILD_HASH, name);
++  POCL_MEM_FREE(name);
++#else
++  snprintf(res, 1000, "nvdlaemu-%s", HOST_DEVICE_BUILD_HASH);
++#endif
++  return res;
++}
++
++// cl_int pocl_nvdlaemu_supports_builtin_kernel(void *data, const char *kernel_name) {
++//   //ARIAA_PRINT_FUNC();
++//   struct data *d = (struct data*)data;
++//   // std::cout<<"pocl_nvdlaemu_supports_builtin_kernel "<<kernel_name<<std::endl;
++//   if (std::string(kernel_name).find("nvdla") != std::string::npos){
++//   // if (strstr(kernel_name,".nvdla") != NULL){
++//     int len = strlen(kernel_name)+1;
++//     d->kernel_metadata->name= (char*)malloc(len);
++//     strcpy(d->kernel_metadata->name,kernel_name);
++//     return 1;
++//   }
++//   return 0;
++// }
++
++cl_int pocl_nvdlaemu_get_builtin_kernel_metadata(void *data,
++                                              const char *kernel_name,
++                                              pocl_kernel_metadata_t *target) {
++  //ARIAA_PRINT_FUNC();
++  struct data *d = (struct data*)data;
++  pocl_kernel_metadata_t* md = d->kernel_metadata;
++  memcpy(target, md, sizeof( pocl_kernel_metadata_t));
++  target->name = strdup(kernel_name);
++  target->arg_info = (struct pocl_argument_info *)calloc(
++          md->num_args, sizeof(struct pocl_argument_info));
++  int i = 0;
++  for (i= 0; i < md->num_args; ++i) {
++    POCL_MSG_PRINT_INFO("copying arg %d (%s) for %s\n",i,md->arg_info[i].name,target->name);
++    memcpy(&target->arg_info[i], &md->arg_info[i],sizeof(struct pocl_argument_info));
++    target->arg_info[i].name = strdup(md->arg_info[i].name);
++    target->arg_info[i].type_name = strdup(md->arg_info[i].type_name);
++  }
++  return 0;
++}
++
++int pocl_nvdlaemu_setup_metadata(cl_device_id device, cl_program program,
++                              unsigned program_device_i) {
++  if (program->builtin_kernel_names == nullptr)
++    return 0;
++
++ 
++  program->num_kernels = program->num_builtin_kernels;
++  if (program->num_kernels) {
++    program->kernel_meta = (pocl_kernel_metadata_t *)calloc(
++        program->num_kernels, sizeof(pocl_kernel_metadata_t));
++
++    for (size_t i = 0; i < program->num_kernels; ++i) {
++      pocl_nvdlaemu_get_builtin_kernel_metadata(device->data,
++                                             program->builtin_kernel_names[i],
++                                             &program->kernel_meta[i]);
++    }
++  }
++
++  return 1;
++}
++
++int parse_config(char* path,cl_program program,cl_uint device_i) {
++  auto dev = program->devices[device_i];
++  struct data *d = (struct data*)(dev->data);
++  // std::vector<string> config;
++  std::ifstream ifs (path);
++  if (!ifs.is_open()){
++    POCL_MSG_ERR("Error opening nvdla config file %s\n",path);
++  }
++  std::stringstream ss;
++  ss << ifs.rdbuf();
++  std::string config_data = ss.str();
++  auto found = config_data.find("model:");
++  if (found == std::string::npos){
++     POCL_MSG_ERR("Improperly formatted graph config file. \"model\" element not found %s\n",path);
++  }
++  std::string model = config_data.substr(found+6,config_data.find('\n',found+6) - (found+6));
++  model.erase(std::remove_if(model.begin(),model.end(),::isspace),model.end());
++  std::ifstream model_ifs(model,std::ios::binary);
++  if (!ifs.is_open()){
++    POCL_MSG_ERR("Error opening nvdla model file %s\n",model.c_str());
++  }
++  std::vector<char> model_bytes_vec((std::istreambuf_iterator<char>(model_ifs)),std::istreambuf_iterator<char>());
++  
++  char* model_bytes = (char*)malloc(model_bytes_vec.size() * sizeof(char));
++  memcpy(model_bytes, model_bytes_vec.data(),model_bytes_vec.size() * sizeof(char));
++
++  found = config_data.find("kernels:");
++  if (found == std::string::npos){
++     POCL_MSG_ERR("Improperly formatted graph config file. \"model\" element not found %s\n",path);
++  }
++
++  std::stringstream kss;
++  kss << dev->builtin_kernel_list;
++  auto kernels = config_data.substr(found);
++  auto nline = kernels.find('\n');
++  while (nline != std::string::npos && found != std::string::npos ){
++    kernels = kernels.substr(nline+1);
++    nline = kernels.find('\n');
++    auto line = kernels.substr(0,nline);
++    found = line.find("-");
++    if (found != std::string::npos) {
++      line = line.substr(found+1,nline-(found+1));
++      line.erase(std::remove_if(line.begin(),line.end(),::isspace),line.end());
++      POCL_LOCK(d->context_cache_lock);
++      
++      d->kernel_network_map->insert({line,model_bytes});
++      ss<<";"<<line;
++      program->builtin_kernel_names[ program->num_builtin_kernels] = strdup(line.c_str());
++      program->num_builtin_kernels += 1;
++      POCL_UNLOCK(d->context_cache_lock);
++    }
++  }
++  // std::cout<<kernels<<std::endl;
++  auto temp = dev->builtin_kernel_list;
++  dev->builtin_kernel_list = strdup(kss.str().c_str());
++  // printf("%s\n",dev->builtin_kernel_list);
++  POCL_MEM_FREE(temp);
++  return 0;
++}
++
++int pocl_nvdlaemu_build_builtin(cl_program program, cl_uint device_i){
++  char* opts = program->compiler_options;
++  char* MCL = "-DMCL_CONFIG=";
++  char* arg = strtok(opts," ");
++  while (arg != NULL){
++    char* mcl_arg = strstr(arg,MCL);
++    if (mcl_arg!=NULL) {
++      mcl_arg +=strlen(MCL);
++      parse_config(mcl_arg,program, device_i);
++    }
++    arg = strtok(NULL," ");
++  }
++ 
++  return 0;
++}
++
++unsigned int pocl_nvdlaemu_probe(struct pocl_device_ops *ops) {
++    //ARIAA_PRINT_FUNC();
++  int env_count = pocl_device_get_env_count(ops->device_name);
++  POCL_MSG_PRINT_INFO("num devices %d\n",env_count);
++  if (env_count < 0){
++      return 0;
++  }
++  return env_count;
++}
++
++cl_int
++pocl_nvdlaemu_alloc_mem_obj (cl_device_id device, cl_mem mem_obj, void* host_ptr)
++{
++  //ARIAA_PRINT_FUNC();
++  unsigned i;
++  POCL_MSG_PRINT_MEMORY (" mem %p, dev %d\n", mem_obj, device->dev_id);
++  
++  void *b = calloc(mem_obj->size,1); // we wont actually alloc on the device until ready to infer (I think...)
++  if (b==NULL){
++    return CL_MEM_OBJECT_ALLOCATION_FAILURE;
++  }
++  mem_obj->device_ptrs[device->dev_id].mem_ptr = b;
++
++  return CL_SUCCESS;
++}
++
++void pocl_nvdlaemu_free(cl_device_id device, cl_mem mem_obj) {
++  //ARIAA_PRINT_FUNC();
++  free(mem_obj->device_ptrs[device->dev_id].mem_ptr);
++  // cudaFree(mem_obj->device_ptrs[device->dev_id].mem_ptr);
++  mem_obj->device_ptrs[device->dev_id].mem_ptr=NULL;
++}
++
++void
++pocl_nvdlaemu_memfill (void *data, pocl_mem_identifier *dst_mem_id,
++                    cl_mem dst_buf, size_t size, size_t offset,
++                    const void *__restrict__ pattern, size_t pattern_size)
++{
++  //ARIAA_PRINT_FUNC();
++}
++
++static void nvdlaemu_command_scheduler (struct data *d) 
++{
++  //ARIAA_PRINT_FUNC();
++  _cl_command_node *node;
++  
++  /* execute commands from ready list */
++  while ((node = d->ready_list))
++    {
++      assert (pocl_command_is_ready(node->event));
++      assert (node->event->status == CL_SUBMITTED);
++      CDL_DELETE (d->ready_list, node);
++      POCL_UNLOCK (d->cq_lock);
++      pocl_exec_command (node);
++      POCL_LOCK (d->cq_lock);
++    }
++  return;
++}
++
++
++void
++pocl_nvdlaemu_submit (_cl_command_node *node, cl_command_queue cq)
++{
++  //ARIAA_PRINT_FUNC();
++  data *d = (data *)node->device->data;
++  POCL_MSG_PRINT_INFO("data!!!!!!!: %p\n",d);
++
++
++  // if (node != NULL && node->type == CL_COMMAND_NDRANGE_KERNEL)
++  //   pocl_check_kernel_dlhandle_cache (node, 1, 1);
++
++  node->ready = 1;
++  POCL_LOCK (d->cq_lock);
++  pocl_command_push(node, &d->ready_list, &d->command_list);
++
++  POCL_UNLOCK_OBJ (node->event);
++  nvdlaemu_command_scheduler (d);
++  POCL_UNLOCK (d->cq_lock);
++
++  return;
++}
++
++
++void pocl_nvdlaemu_flush (cl_device_id device, cl_command_queue cq)
++{
++  //ARIAA_PRINT_FUNC();
++  struct data *d = (struct data*)device->data;
++
++  POCL_LOCK (d->cq_lock);
++  nvdlaemu_command_scheduler (d);
++  POCL_UNLOCK (d->cq_lock);
++}
++
++void
++pocl_nvdlaemu_join (cl_device_id device, cl_command_queue cq)
++{
++  //ARIAA_PRINT_FUNC();
++  struct data *d = (struct data*)device->data;
++
++  POCL_LOCK (d->cq_lock);
++  nvdlaemu_command_scheduler (d);
++  POCL_UNLOCK (d->cq_lock);
++
++  return;
++}
++
++void pocl_nvdlaemu_write(void *data, const void *__restrict__ src_host_ptr,
++                      pocl_mem_identifier *dst_mem_id, cl_mem dst_buf,
++                      size_t offset, size_t size) {
++  //ARIAA_PRINT_FUNC();
++  void *__restrict__ device_ptr = dst_mem_id->mem_ptr;
++  POCL_MSG_PRINT_INFO("data: %p device_ptr: %p src_host_ptr: %p offset: %lu size: %lu\n",data,device_ptr, src_host_ptr, offset,size);
++  if (src_host_ptr == device_ptr)
++    return;
++  memcpy ((char *)device_ptr + offset, src_host_ptr, size);
++
++  //need to check if this a write than we need to send to emulator right away...
++  
++  
++}
++
++void
++pocl_nvdlaemu_read (void *data,
++                 void *__restrict__ host_ptr,
++                 pocl_mem_identifier * src_mem_id,
++                 cl_mem src_buf,
++                 size_t offset, size_t size)
++{
++  //ARIAA_PRINT_FUNC();
++  void *__restrict__ device_ptr = src_mem_id->mem_ptr;
++  if (host_ptr == device_ptr)
++    return;
++
++  memcpy (host_ptr, (char *)device_ptr + offset, size);
++  //need to check if this a write than we need to get from emulator right away...
++}
++
++
++bool initalizeServerFromBin(data* d,  char* netbuf, uint64_t size,  std::string binName){
++  d->server->lock();
++  sendLoadBinary( d->server,(uint8_t*)netbuf,size,binName);
++  d->server->unlock();
++  
++}
++
++void doInference(Connection* connection,float* input_data,size_t in_size, float* output_data, size_t out_size){ //probably need to include input and output sizes
++   //ARIAA_PRINT_FUNC();
++  connection->lock();
++  sendInputData( connection,(uint8_t*)input_data,in_size);
++  bool ret =sendInfer(connection,(uint8_t*)output_data,out_size);
++  connection->unlock();
++
++}
++
++
++void
++pocl_nvdlaemu_run (void *data, _cl_command_node *cmd)
++{
++  struct data *d = (struct data*)data;
++  //ARIAA_PRINT_FUNC();
++  struct pocl_argument *al;
++  cl_kernel kernel = cmd->command.run.kernel;
++  pocl_kernel_metadata_t *meta = kernel->meta;
++  struct pocl_context *pc = &cmd->command.run.pc;
++  POCL_MSG_PRINT_INFO("num args: %u\n",meta->num_args);
++
++
++
++  // POCL_MSG_PRINT_INFO("netbuf p: %p size: %lu\n",netbuf,m->size);
++  auto kernel_name = std::string(meta->name);
++  POCL_LOCK(d->context_cache_lock);
++  if (d->kernel_network_map->count(kernel_name) > 0){
++    char* netbuf = d->kernel_network_map->operator[](kernel_name);
++    auto ret = initalizeServerFromBin(d,netbuf,876880,kernel_name);
++  }
++  else{
++    POCL_MSG_ERR("KERNEL Name not found %s\n",meta->name);
++  }
++  POCL_UNLOCK(d->context_cache_lock);
++
++  struct pocl_argument * input = &(cmd->command.run.arguments[0]); 
++  cl_mem in_m = (*(cl_mem *)(input->value));
++  float* in_buf = (float*) in_m->device_ptrs[cmd->device->dev_id].mem_ptr;
++  POCL_MSG_PRINT_INFO("inbuf p: %p size: %lu\n",in_buf,in_m->size);
++
++  struct pocl_argument * output = &(cmd->command.run.arguments[1]); 
++  cl_mem out_m = (*(cl_mem *)(output->value));
++  float* out_buf = (float*) out_m->device_ptrs[cmd->device->dev_id].mem_ptr;
++  POCL_MSG_PRINT_INFO("outbuf p: %p size: %lu\n",out_buf,out_m->size);
++
++  doInference(d->server,in_buf,in_m->size,out_buf,out_m->size); //probably need to send in and out size
++  
++}
++
++
++
++
+diff --git a/lib/CL/devices/nvdla/emulator/nvdlaemu.hpp b/lib/CL/devices/nvdla/emulator/nvdlaemu.hpp
+new file mode 100644
+index 0000000..49562ec
+--- /dev/null
++++ b/lib/CL/devices/nvdla/emulator/nvdlaemu.hpp
+@@ -0,0 +1,21 @@
++#ifndef POCL_NVDLAEMU_H
++#define POCL_NVDLAEMU_H
++
++#include "config.h"
++#include "pocl_cl.h"
++#include "pocl_icd.h"
++#include "prototypes.inc"
++
++#ifdef __cplusplus
++extern "C"
++{
++#endif
++
++  GEN_PROTOTYPES (basic)
++  GEN_PROTOTYPES (nvdlaemu)
++
++#ifdef __cplusplus
++}
++#endif
++
++#endif /* POCL_NVDLAEMU_H */
+\ No newline at end of file
+diff --git a/lib/CL/devices/nvdla/xavier/CMakeLists.txt b/lib/CL/devices/nvdla/xavier/CMakeLists.txt
+new file mode 100644
+index 0000000..861f18e
+--- /dev/null
++++ b/lib/CL/devices/nvdla/xavier/CMakeLists.txt
+@@ -0,0 +1,27 @@
++find_package(CUDA)
++if (CUDA_TOOLKIT_ROOT_DIR)
++    message(STATUS "CUDA_TOOLKIT_ROOT_DIR = ${CUDA_TOOLKIT_ROOT_DIR}")
++    find_package(TensorRT)
++    message(STATUS "TensorRT IncludeDir ${TensorRT_INCLUDE_DIRS}")
++    message(STATUS "TensorRT Version ${TensorRT_VERSION_STRING}")
++    message(STATUS "TensorRT Library ${TensorRT_LIBRARY}")
++
++    list(APPEND PLUGINS "nvparsers")
++    foreach(libName ${PLUGINS})
++        find_library(${libName}_lib NAMES ${libName} "/usr" PATH_SUFFIXES lib)
++        list(APPEND PLUGIN_LIBS "${${libName}_lib}")
++        message(STATUS "${libName} = ${${libName}_lib}")
++    endforeach()
++
++    add_compile_options("-std=c++11")
++
++    include_directories(${TensorRT_INCLUDE_DIRS} ${CUDA_INCLUDE_DIRS})
++
++    add_library("pocl-devices-xavier" OBJECT xavier.cpp xavier.hpp)
++    target_compile_definitions("pocl-devices-xavier" PRIVATE "-DCUDA_TOOLKIT_ROOT_DIR=\"${CUDA_TOOLKIT_ROOT_DIR}\"")
++    #target_link_libraries("pocl-devices-xavier" ${TensorRT_LIBRARY} ${nvparsers_lib})
++    set(XAVIER_LIBS "${TensorRT_LIBRARY};${nvparsers_lib}" PARENT_SCOPE)
++    set(POCL_DEVICES_OBJS "${POCL_DEVICES_OBJS};$<TARGET_OBJECTS:pocl-devices-xavier>" PARENT_SCOPE)
++    set(BUILD_XAVIER "1" PARENT_SCOPE) 
++endif()
++
+diff --git a/lib/CL/devices/nvdla/xavier/xavier.cpp b/lib/CL/devices/nvdla/xavier/xavier.cpp
+new file mode 100644
+index 0000000..3d11b41
+--- /dev/null
++++ b/lib/CL/devices/nvdla/xavier/xavier.cpp
+@@ -0,0 +1,496 @@
++
++#include "xavier.hpp"
++#include "devices.h"
++#include "pocl_cl.h"
++#include "pocl_util.h"
++
++#include "limits.h"
++
++#include <iostream>
++#include <sstream>
++#include <algorithm>
++#include <cuda_runtime_api.h>
++#include <vector>
++#include <fstream>
++#include <unordered_map>
++#include "NvCaffeParser.h"
++#include "NvInfer.h"
++#include "NvInferPlugin.h"
++/* notes:
++initially, rely on users having built nvdla engines
++flag will specify if it is DLA only, GPU only, hybrid, and which of the three are available?
++
++
++in mcl instead of clCreateProgramWithSource we need to do
++clCreateProgramWithBinary, but utilizing the allow_empty binaries flag
++
++this should be able to create a program that can be used during the call to
++build program?
++
++
++instead of mcl_task_set_kernel... maybe do something like mcl_task_set_network (mcl_task_set_engine?)
++
++what is the "user facing interface"
++
++inputs: batch size, block of memory, or a path to images/data, if a path, need a way to properly injest data for the provided engine
++*/
++
++/* default WG size in each dimension & total WG size.
++ * this should be reasonable for CPU */
++#define DEFAULT_WG_SIZE 4096
++
++class MyLogger : public nvinfer1::ILogger{
++    void log (Severity severity, const char* msg){
++        POCL_MSG_PRINT_INFO("NVDLA LOGGER: %s\n",msg);
++    }
++};
++
++MyLogger logger{};
++
++struct data {
++  /* Currently loaded kernel. */
++  
++  cl_kernel current_kernel;
++
++  // std::unordered_map<std::string,nvinfer1::ICudaEngine*>* context_cache[2];
++  std::unordered_map<std::string,nvinfer1::IExecutionContext*>* context_cache[2];
++
++  pocl_argument_info* input_info;
++  pocl_argument_info* output_info;
++  pocl_argument_info* network_info;
++  pocl_kernel_metadata_t * kernel_metadata;
++
++  /* List of commands ready to be executed */
++  _cl_command_node * volatile ready_list;
++  /* List of commands not yet ready to be executed */
++  _cl_command_node * volatile command_list;
++  /* Lock for command list related operations */
++  pocl_lock_t cq_lock;
++  pocl_lock_t context_cache_lock;
++  /* printf buffer */
++  void *printf_buffer;
++};
++
++pocl_argument_info* create_arg_info(const char *TypeName, const char *Name, pocl_argument_type Type, cl_kernel_arg_address_qualifier AQ) {
++  ARIAA_PRINT_FUNC();
++  pocl_argument_info* arg = (pocl_argument_info*)calloc(1,sizeof(pocl_argument_info));
++  arg->type = Type;
++  arg->address_qualifier = AQ;
++  arg->type_name = strdup(TypeName);
++  arg->name = strdup(Name);
++  return arg;
++}
++void destroy_arg_info(pocl_argument_info* arg){
++  ARIAA_PRINT_FUNC();
++  free(arg->name);
++  free(arg->type_name);
++  free(arg);
++}
++
++pocl_kernel_metadata_t* create_kernel_metadata( pocl_argument_info* input, pocl_argument_info* output, pocl_argument_info* network){
++  ARIAA_PRINT_FUNC();
++  pocl_kernel_metadata_t* md = ( pocl_kernel_metadata_t* ) calloc(1,sizeof( pocl_kernel_metadata_t));
++  md->builtin_kernel=1;
++  md->name=(char*)"";
++  md->num_args=3;
++  md->arg_info = (pocl_argument_info*)calloc(3,sizeof(pocl_argument_info));
++ 
++  md->arg_info[0] = *input;
++  md->arg_info[0].name = strdup(input->name);
++  md->arg_info[0].type_name = strdup(input->type_name);
++
++  md->arg_info[1] = *output;
++  md->arg_info[1].name = strdup(output->name);
++  md->arg_info[1].type_name = strdup(output->type_name);
++
++  md->arg_info[2] = *network;
++  md->arg_info[2].name = strdup(network->name);
++  md->arg_info[2].type_name = strdup(network->type_name);
++  return md;
++}
++
++
++void pocl_xavier_init_device_ops(struct pocl_device_ops *ops) {
++    ARIAA_PRINT_FUNC();
++    POCL_MSG_PRINT_INFO("nvdla: init dev ops\n");
++    ops->device_name = "nvdla";
++    ops->init = pocl_xavier_init;
++    // ops->uninit = pocl_xavier_uninit;
++    ops->probe = pocl_xavier_probe;
++    ops->build_hash = pocl_xavier_build_hash;
++    ops->supports_builtin_kernel = pocl_xavier_supports_builtin_kernel;
++    ops->get_builtin_kernel_metadata = pocl_xavier_get_builtin_kernel_metadata;
++
++    // /* TODO: Bufalloc-based allocation from the onchip memories. */
++    ops->alloc_mem_obj = pocl_xavier_alloc_mem_obj;
++    ops->free = pocl_xavier_free;
++    // ops->map_mem = pocl_xavier_map_mem;
++    ops->memfill = pocl_xavier_memfill;
++
++    ops->submit = pocl_xavier_submit;
++    ops->flush = ops->join = pocl_xavier_join;
++
++    ops->write = pocl_xavier_write;
++    ops->read = pocl_xavier_read;
++
++    // ops->notify = pocl_xavier_notify;
++
++    ops->broadcast = pocl_broadcast;
++    ops->run = pocl_xavier_run;
++}
++
++cl_int pocl_xavier_init(unsigned j, cl_device_id dev, const char *parameters) {
++  ARIAA_PRINT_FUNC();
++  SETUP_DEVICE_CL_VERSION(1, 2);
++  dev->type = CL_DEVICE_TYPE_CUSTOM;
++  dev->long_name = (char *)"NVIDIA XAVIER";
++  dev->vendor = "pocl";
++  dev->version = "1.2";
++  dev->available = CL_TRUE;
++  dev->extensions = "";
++  dev->profile = "FULL_PROFILE";
++  dev->max_mem_alloc_size = 100 * 1024 * 1024;
++  dev->max_compute_units=2; //two dla cores
++  /* system mem as global memory */
++  dev->global_mem_id = 0;
++  dev->global_mem_size = (size_t)8*1024*1024*1024;
++  
++
++  struct data *d;
++  d = (struct data *) calloc (1, sizeof (struct data));
++  if (d == NULL)
++    return CL_OUT_OF_HOST_MEMORY;
++
++  dev->platform = 0;
++
++  dev->max_work_item_dimensions = 3;
++
++  int max_wg
++      = pocl_get_int_option ("POCL_MAX_WORK_GROUP_SIZE", DEFAULT_WG_SIZE);
++  assert (max_wg > 0);
++  max_wg = std::min (max_wg, DEFAULT_WG_SIZE);
++  if (max_wg < 0)
++    max_wg = DEFAULT_WG_SIZE;
++  dev->max_work_group_size = dev->max_work_item_sizes[0] =
++      dev->max_work_item_sizes[1] = dev->max_work_item_sizes[2] = max_wg;
++
++  d->current_kernel = NULL;
++  d->input_info = create_arg_info("char*", "input", POCL_ARG_TYPE_POINTER, CL_KERNEL_ARG_ADDRESS_GLOBAL);
++  d->output_info = create_arg_info("char*", "output", POCL_ARG_TYPE_POINTER, CL_KERNEL_ARG_ADDRESS_GLOBAL);
++  d->network_info = create_arg_info("char*", "network", POCL_ARG_TYPE_POINTER, CL_KERNEL_ARG_ADDRESS_GLOBAL);
++  d->kernel_metadata = create_kernel_metadata(d->input_info,d->output_info,d->network_info);
++  d->context_cache[0] = new std::unordered_map<std::string,nvinfer1::IExecutionContext*>();
++  d->context_cache[1] = new std::unordered_map<std::string,nvinfer1::IExecutionContext*>();
++  POCL_INIT_LOCK(d->cq_lock);
++  POCL_INIT_LOCK(d->context_cache_lock);
++  dev->data = d;
++
++  return CL_SUCCESS;
++}
++
++char *pocl_xavier_build_hash(cl_device_id device) {
++    ARIAA_PRINT_FUNC();
++  char *res = (char *)calloc(1000, sizeof(char));
++#ifdef KERNELLIB_HOST_DISTRO_VARIANTS
++  char *name = get_llvm_cpu_name();
++  snprintf(res, 1000, "nvdla-%s-%s", HOST_DEVICE_BUILD_HASH, name);
++  POCL_MEM_FREE(name);
++#else
++  snprintf(res, 1000, "nvdla-%s", HOST_DEVICE_BUILD_HASH);
++#endif
++  return res;
++}
++
++cl_int pocl_xavier_supports_builtin_kernel(void *data, const char *kernel_name) {
++  ARIAA_PRINT_FUNC();
++  struct data *d = (struct data*)data;
++  if (std::string(kernel_name).find("nvdla") != std::string::npos){
++    int len = strlen(kernel_name)+1;
++    d->kernel_metadata->name= (char*)malloc(len);
++    strcpy(d->kernel_metadata->name,kernel_name);
++    return 1;
++  }
++  return 0;
++}
++
++cl_int pocl_xavier_get_builtin_kernel_metadata(void *data,
++                                              const char *kernel_name,
++                                              pocl_kernel_metadata_t *target) {
++  ARIAA_PRINT_FUNC();
++  // AccelData *D = (AccelData *)data;
++
++  struct data *d = (struct data*)data;
++  pocl_kernel_metadata_t* md = d->kernel_metadata;
++  memcpy(target, md, sizeof( pocl_kernel_metadata_t));
++  target->name = strdup(md->name);
++  target->arg_info = (struct pocl_argument_info *)calloc(
++          md->num_args, sizeof(struct pocl_argument_info));
++  int i = 0;
++  for (i= 0; i < md->num_args; ++i) {
++    POCL_MSG_PRINT_INFO("copying arg %d (%s) for %s\n",i,md->arg_info[i].name,target->name);
++    memcpy(&target->arg_info[i], &md->arg_info[i],sizeof(struct pocl_argument_info));
++    target->arg_info[i].name = strdup(md->arg_info[i].name);
++    target->arg_info[i].type_name = strdup(md->arg_info[i].type_name);
++  }
++  return 0;
++}
++
++unsigned int pocl_xavier_probe(struct pocl_device_ops *ops) {
++    ARIAA_PRINT_FUNC();
++  int env_count = pocl_device_get_env_count(ops->device_name);
++  POCL_MSG_PRINT_INFO("num devices %d\n",env_count);
++  if (env_count < 0){
++      return 0;
++  }
++  return env_count;
++}
++
++cl_int
++pocl_xavier_alloc_mem_obj (cl_device_id device, cl_mem mem_obj, void* host_ptr)
++{
++  ARIAA_PRINT_FUNC();
++  unsigned i;
++  POCL_MSG_PRINT_MEMORY (" mem %p, dev %d\n", mem_obj, device->dev_id);
++  /* check if some driver has already allocated memory for this mem_obj 
++     in our global address space, and use that*/
++  for (i = 0; i < mem_obj->context->num_devices; ++i)
++    {
++      if (!mem_obj->device_ptrs[i].available)
++        continue;
++
++      if (mem_obj->device_ptrs[i].global_mem_id == device->global_mem_id
++          && mem_obj->device_ptrs[i].mem_ptr != NULL)
++        {
++          mem_obj->device_ptrs[device->dev_id].mem_ptr =
++            mem_obj->device_ptrs[i].mem_ptr;
++          POCL_MSG_PRINT_MEMORY (
++              "mem %p dev %d, using already allocated mem\n", mem_obj,
++              device->dev_id);
++          return CL_SUCCESS;
++        }
++    }
++  // void *b = calloc(mem_obj->size,1);
++  void* b;
++            cudaMallocManaged(&b,mem_obj->size);
++  if (b==NULL){
++    return CL_MEM_OBJECT_ALLOCATION_FAILURE;
++  }
++  mem_obj->device_ptrs[device->dev_id].mem_ptr = b;
++
++  return CL_SUCCESS;
++}
++
++void pocl_xavier_free(cl_device_id device, cl_mem mem_obj) {
++  ARIAA_PRINT_FUNC();
++  // free(mem_obj->device_ptrs[device->dev_id].mem_ptr);
++  cudaFree(mem_obj->device_ptrs[device->dev_id].mem_ptr);
++  mem_obj->device_ptrs[device->dev_id].mem_ptr=NULL;
++}
++
++void
++pocl_xavier_memfill (void *data, pocl_mem_identifier *dst_mem_id,
++                    cl_mem dst_buf, size_t size, size_t offset,
++                    const void *__restrict__ pattern, size_t pattern_size)
++{
++  ARIAA_PRINT_FUNC();
++}
++
++static void nvdla_command_scheduler (struct data *d) 
++{
++  ARIAA_PRINT_FUNC();
++  _cl_command_node *node;
++  
++  /* execute commands from ready list */
++  while ((node = d->ready_list))
++    {
++      assert (pocl_command_is_ready(node->event));
++      assert (node->event->status == CL_SUBMITTED);
++      CDL_DELETE (d->ready_list, node);
++      POCL_UNLOCK (d->cq_lock);
++      pocl_exec_command (node);
++      POCL_LOCK (d->cq_lock);
++    }
++  return;
++}
++
++
++void
++pocl_xavier_submit (_cl_command_node *node, cl_command_queue cq)
++{
++  ARIAA_PRINT_FUNC();
++  data *d = (data *)node->device->data;
++  POCL_MSG_PRINT_INFO("data!!!!!!!: %p\n",d);
++
++
++  // if (node != NULL && node->type == CL_COMMAND_NDRANGE_KERNEL)
++  //   pocl_check_kernel_dlhandle_cache (node, 1, 1);
++
++  node->ready = 1;
++  POCL_LOCK (d->cq_lock);
++  pocl_command_push(node, &d->ready_list, &d->command_list);
++
++  POCL_UNLOCK_OBJ (node->event);
++  nvdla_command_scheduler (d);
++  POCL_UNLOCK (d->cq_lock);
++
++  return;
++}
++
++
++void pocl_xavier_flush (cl_device_id device, cl_command_queue cq)
++{
++  ARIAA_PRINT_FUNC();
++  struct data *d = (struct data*)device->data;
++
++  POCL_LOCK (d->cq_lock);
++  nvdla_command_scheduler (d);
++  POCL_UNLOCK (d->cq_lock);
++}
++
++void
++pocl_xavier_join (cl_device_id device, cl_command_queue cq)
++{
++  ARIAA_PRINT_FUNC();
++  struct data *d = (struct data*)device->data;
++
++  POCL_LOCK (d->cq_lock);
++  nvdla_command_scheduler (d);
++  POCL_UNLOCK (d->cq_lock);
++
++  return;
++}
++
++void pocl_xavier_write(void *data, const void *__restrict__ src_host_ptr,
++                      pocl_mem_identifier *dst_mem_id, cl_mem dst_buf,
++                      size_t offset, size_t size) {
++  ARIAA_PRINT_FUNC();
++  void *__restrict__ device_ptr = dst_mem_id->mem_ptr;
++  POCL_MSG_PRINT_INFO("data: %p device_ptr: %p src_host_ptr: %p offset: %lu size: %lu\n",data,device_ptr, src_host_ptr, offset,size);
++  if (src_host_ptr == device_ptr)
++    return;
++  memcpy ((char *)device_ptr + offset, src_host_ptr, size);
++  
++  
++}
++
++void
++pocl_xavier_read (void *data,
++                 void *__restrict__ host_ptr,
++                 pocl_mem_identifier * src_mem_id,
++                 cl_mem src_buf,
++                 size_t offset, size_t size)
++{
++  ARIAA_PRINT_FUNC();
++  void *__restrict__ device_ptr = src_mem_id->mem_ptr;
++  if (host_ptr == device_ptr)
++    return;
++
++  memcpy (host_ptr, (char *)device_ptr + offset, size);
++}
++
++nvinfer1::IExecutionContext* engineFromBin(data* d, char* netbuf,size_t size,std::string binName){
++   ARIAA_PRINT_FUNC();
++
++  int core = rand()%2; //eventually come up with better resource management...
++
++  auto eng = d->context_cache[core]->find(binName);
++  if (eng != d->context_cache[core]->end()){
++    return eng->second;
++  }
++  // std::vector<char> engineBin;
++  //   size_t msize{0};
++  //   std::ifstream file("/home/rfriese/projects/ariaa/caffe/mnist_dla.bin", std::ios::binary);
++  //   if (file.good())
++  //   {
++  //       file.seekg(0, file.end);
++  //       msize = file.tellg();
++  //       file.seekg(0, file.beg);
++  //       engineBin.resize(msize);
++  //       file.read(engineBin.data(), size);
++  //       file.close();
++  //   }
++    nvinfer1::IRuntime* infer = nvinfer1::createInferRuntime(logger);
++    
++    infer->setDLACore(core);
++    
++    auto engine = infer->deserializeCudaEngine(netbuf, size, nullptr);
++     POCL_MSG_PRINT_INFO( "sucessfully created engine.\n");
++
++    infer->destroy();
++    auto context = engine->createExecutionContext();
++    d->context_cache[core]->emplace(binName,context);
++    return context;
++}
++
++std::string dimsToString(nvinfer1::Dims &dims){
++    std::stringstream ss;
++    ss<<"(";
++    for (int i=0; i < dims.nbDims-1;i++){
++        ss<<dims.d[i]<<"x";
++    }
++    ss<<dims.d[dims.nbDims-1]<<")";
++    return ss.str();
++}
++
++uint32_t getElementSize(nvinfer1::DataType t){
++    switch(t){
++        case nvinfer1::DataType::kINT32: return 4;
++        case nvinfer1::DataType::kFLOAT: return 4;
++        case nvinfer1::DataType::kHALF: return 2;
++        case nvinfer1::DataType::kINT8: return 1;
++    }
++    std::cerr<<"Invalid datatype!"<<std::endl;
++    return 0;
++}
++
++void doInference( nvinfer1::IExecutionContext* context,float* input_data, float* output_data){
++   ARIAA_PRINT_FUNC();
++    std::vector<std::vector<void*>> deviceBuffers(1);
++    void* buffers[] = {(void*)input_data,(void*)output_data};
++    
++    cudaStream_t stream;
++    cudaStreamCreate(&stream);
++    context->enqueue(1,buffers,stream,nullptr);
++    cudaStreamSynchronize(stream);
++    cudaStreamDestroy(stream);
++
++}
++
++void
++pocl_xavier_run (void *data, _cl_command_node *cmd)
++{
++  struct data *d = (struct data*)data;
++  ARIAA_PRINT_FUNC();
++  struct pocl_argument *al;
++  cl_kernel kernel = cmd->command.run.kernel;
++  pocl_kernel_metadata_t *meta = kernel->meta;
++  struct pocl_context *pc = &cmd->command.run.pc;
++  POCL_MSG_PRINT_INFO("num args: %u\n",meta->num_args);
++
++  al = &(cmd->command.run.arguments[meta->num_args-1]); //the network;
++  cl_mem m = (*(cl_mem *)(al->value));
++  char* netbuf = (char*) m->device_ptrs[cmd->device->dev_id].mem_ptr;
++
++
++  POCL_MSG_PRINT_INFO("netbuf p: %p size: %lu\n",netbuf,m->size);
++  POCL_LOCK(d->context_cache_lock);
++  auto engine = engineFromBin(d,netbuf,m->size,std::string(meta->name));
++  POCL_UNLOCK(d->context_cache_lock);
++
++  struct pocl_argument * input = &(cmd->command.run.arguments[0]); 
++  cl_mem in_m = (*(cl_mem *)(input->value));
++  float* in_buf = (float*) in_m->device_ptrs[cmd->device->dev_id].mem_ptr;
++  POCL_MSG_PRINT_INFO("inbuf p: %p size: %lu\n",in_buf,in_m->size);
++
++  struct pocl_argument * output = &(cmd->command.run.arguments[1]); 
++  cl_mem out_m = (*(cl_mem *)(output->value));
++  float* out_buf = (float*) out_m->device_ptrs[cmd->device->dev_id].mem_ptr;
++  POCL_MSG_PRINT_INFO("outbuf p: %p size: %lu\n",out_buf,out_m->size);
++
++  doInference(engine,in_buf,out_buf);
++  
++}
++
++
++
++
+diff --git a/lib/CL/devices/nvdla/xavier/xavier.hpp b/lib/CL/devices/nvdla/xavier/xavier.hpp
+new file mode 100644
+index 0000000..5ef87b8
+--- /dev/null
++++ b/lib/CL/devices/nvdla/xavier/xavier.hpp
+@@ -0,0 +1,21 @@
++#ifndef POCL_XAVIER_H
++#define POCL_XAVIER_H
++
++#include "config.h"
++#include "pocl_cl.h"
++#include "pocl_icd.h"
++#include "prototypes.inc"
++
++#ifdef __cplusplus
++extern "C"
++{
++#endif
++
++  GEN_PROTOTYPES (basic)
++  GEN_PROTOTYPES (xavier)
++
++#ifdef __cplusplus
++}
++#endif
++
++#endif /* POCL_NVDLA_H */
+\ No newline at end of file
