@@ -252,10 +252,7 @@ static inline mcl_pobj *__build_program(mcl_program *p, unsigned int n) {
                                                     (const unsigned char **)&(p->src), NULL, &ret);
             break;
         case MCL_PRG_GRAPH:
-            // TODO parse config.yaml and pass that in for the program name
-            // so that we can support differen data flow devices
             obj->cl_prg = clCreateProgramWithBuiltInKernels(clctx, 1, &dev, "dataflow", &ret);
-            // p->opts = 
             break;
         default:
             eprintf("Unsupported program type! (flags=0x%lx)", p->flags);
@@ -328,8 +325,7 @@ int __set_prg(char *path, char *copts, unsigned long flags) {
     }
     case MCL_PRG_GRAPH: {
         archs = MCL_TASK_DF;
-        char* targ = "-DMCL_CONFIG=";
-
+        char* targ = "-DMCL_CONFIG="; //we pass along the path of the config so that pocl can access during the "build/compile" of the "ocl" program
         copts = (char*) malloc(sizeof(char) * strlen(targ)+strlen(path)+1);
         strcpy(copts,targ);
         strcpy(copts+strlen(targ),path);
@@ -409,58 +405,6 @@ int __set_prg(char *path, char *copts, unsigned long flags) {
             goto err;
         }
         ptr = strtok(NULL, ";");
-    }
-
-    if (flags | MCL_PRG_GRAPH) {
-        
-        FILE *in_file = fopen(path,"r");
-        
-        if(in_file == NULL){
-            eprintf("\n Error opening graph config file. Aborting.\n");
-            ret = MCL_ERR_INVPRG;
-            
-            goto err;
-        }
-
-        fseek(in_file, 0, SEEK_END);
-        uint64_t size = ftell(in_file) + 1;
-        fseek(in_file, 0, SEEK_SET);
-        char* data = malloc(size);
-        if(data == NULL) {
-            eprintf("\n Error allocating memory for  graph config file. Aborting.\n");
-            ret = MCL_ERR_INVPRG;
-            fclose(in_file);
-            goto err;
-        }
-        ret = fread(data,1,size-1,in_file);
-        if (ret != size-1) {
-            eprintf("\n Error reading graph config file. Aborting.\n");
-            ret = MCL_ERR_INVPRG;
-            fclose(in_file);
-            goto err;
-        }
-        data[size-1] = '\0';
-        fclose(in_file);
-        
-        printf("file: %s\n",data);
-        char* model_start = strstr(data,"model:");
-        if (model_start == NULL){
-            eprintf("\n Improperly formatted graph config file. Aborting.\n");
-            ret = MCL_ERR_INVPRG;
-            goto err;
-        }
-        model_start += 6;
-        // char* graph_end = strchr(graph_start,'\n');
-        char* temp = strtok(model_start," \n");
-        if (temp == NULL){
-            eprintf("\n Improperly formatted graph config file. Aborting.\n");
-            ret = MCL_ERR_INVPRG;
-            goto err;
-        }
-        printf("model path %s\n",temp);
-        
-        free(data);
-
     }
 
 err:
