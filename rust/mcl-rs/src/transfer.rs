@@ -130,7 +130,7 @@ impl<'a> Transfer<'a> {
     ///     let sequential_tasks = async move{
     ///         t1.await; //task will execute before task 2 is even submitted
     ///         t2.await;
-    ///     }
+    ///     };
     ///     futures::executor::block_on(sequential_tasks);
     ///     
     ///     let t3 = mcl.transfer(1, 1)

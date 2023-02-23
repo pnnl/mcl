@@ -22,17 +22,18 @@ pub struct Task<'a> {
     les: Option<[u64; 3]>,
     dev: DevType,
     c_handle: *mut mcl_handle,
+    #[cfg(any(feature = "shared_mem", feature = "pocl_extensions"))]
     shared_id: Option<u32>,
 }
 
 impl<'a> Task<'a> {
     pub(crate) fn new(kernel_name_cl: &str, nargs: usize, flags: TaskOpt) -> Self {
         let c_handle = low_level::task_create(flags);
-        #[allow(unused_mut)]
+        #[cfg(any(feature = "shared_mem", feature = "pocl_extensions"))]
         let mut id = None;
         #[cfg(any(feature = "shared_mem", feature = "pocl_extensions"))]
         if flags.contains(TaskOpt::SHARED) {
-            low_level::get_shared_task_id(c_handle)
+            id = low_level::get_shared_task_id(c_handle)
         }
         let task = Task {
             args: vec![Default::default(); nargs],
@@ -40,6 +41,7 @@ impl<'a> Task<'a> {
             les: None,
             dev: DevType::ANY,
             c_handle: c_handle,
+            #[cfg(any(feature = "shared_mem", feature = "pocl_extensions"))]
             shared_id: id,
         };
         low_level::task_set_kernel(task.c_handle, kernel_name_cl, nargs as u64);
@@ -226,6 +228,7 @@ impl<'a> Task<'a> {
     ///     let shared_task = mcl.shared_task("my_kernel2", 1);
     ///     assert!(shared_task.shared_id().is_some());
     ///```
+    #[cfg(any(feature = "shared_mem", feature = "pocl_extensions"))]
     pub fn shared_id(&self) -> Option<u32> {
         self.shared_id
     }
@@ -257,7 +260,7 @@ impl<'a> Task<'a> {
     ///     let sequential_tasks = async move{
     ///         task_1.await; //task will execute before task 2 is even submitted
     ///         task_2.await;
-    ///     }
+    ///     };
     ///     futures::executor::block_on(sequential_tasks);
     ///     
     ///     let task_3 = mcl.task("my_kernel", 1)
