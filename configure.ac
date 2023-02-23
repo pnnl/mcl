@@ -80,8 +80,8 @@ AC_ARG_ENABLE([pocl-extensions],
 		    [Enable POCL extensions (default: disabled)])])
 
 AC_CHECK_HEADERS([stdio.h],[],[AC_MSG_ERROR[stdio.h not found!]])
-AC_CHECK_HEADERS([uthash.h],[],[AC_MSG_ERROR[uthash.h not found!]])
-AC_CHECK_HEADERS([utlist.h],[],[AC_MSG_ERROR[utlist.h not found!]])
+# AC_CHECK_HEADERS([uthash.h],[],[AC_MSG_ERROR[uthash.h not found!]])
+# AC_CHECK_HEADERS([utlist.h],[],[AC_MSG_ERROR[utlist.h not found!]])
 
 
 if test "$enable_appleocl" = "yes" ; then
@@ -90,7 +90,7 @@ else
   AC_CHECK_HEADERS([CL/cl.h],[found_opencl_h=yes])
 fi
 
-if test "$enable_opencl2" != "no" ; then
+if test "$enable_opencl2" = "yes" ; then
   AS_VAR_APPEND(CFLAGS, " -DOPENCL2")
 fi
 
@@ -148,9 +148,11 @@ fi
 
 AM_CONDITIONAL([HAVE_DOXYGEN], [test -n "$DOXYGEN"])
 
+
+
 AC_CONFIG_HEADERS([config.h])
 AC_CONFIG_HEADERS([src/lib/include/mcl/_config.h:src/lib/include/mcl/mcl_config.h.in])
-AX_PREFIX_CONFIG_H([src/lib/include/mcl/mcl_config.h], [MCL], [src/lib/include/mcl/_config.h])
+AX_PREFIX_CONFIG_H([$srcdir/src/lib/include/mcl/mcl_config.h], [MCL], [src/lib/include/mcl/_config.h])
 AC_CONFIG_FILES([Makefile src/Makefile src/lib/Makefile src/sched/Makefile test/Makefile])
 
 AM_COND_IF([HAVE_DOXYGEN], [AC_CONFIG_FILES([doc/Doxyfile])])

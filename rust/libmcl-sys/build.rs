@@ -193,7 +193,7 @@ fn main() {
                 .build();
             println!("libatomic_build {libatomic_build:?}");
             let libatomic_inc = libatomic_build.clone().join("include");
-            let libatomic_lib = libatomic_build.clone().join("include");
+            let libatomic_lib = libatomic_build.clone().join("lib");
 
             let uthash_inc = mcl_dest.clone().join("deps/uthash/include");
 
