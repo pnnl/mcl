@@ -12,6 +12,10 @@ to catch errors at runtime, as well as a few APIS that currently cannot be check
 ## Building mcl-rs
 ### Required libraries/ crates
 * [libmcl-sys](https://github.com/pnnl/mcl/tree/master/rust/libmcl-sys) and its dependencies
+  * Clang
+  * OpenCL
+  * Autotools
+  * MCL (either manually installed or via ```cargo install mcl_sched```)
 * Other crates listed in Cargo.toml
 
 

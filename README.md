@@ -197,7 +197,7 @@ e functionalities in MCL do require an OpenCL 2.x-compatible library. The option
 
 Notes on OSX:
 - On OSX MCL can either use Apple OpenCL libraries (Default) or other OpenCL libraries.
- We have successfully tested POCL (http://portablecl.org). The option `--enable-applecl`
+ We have successfully tested POCL (http://portablecl.org). The option `--enable-appleocl`
  can be used to enable/disable Apple OpenCL library. The default value is `enabled` on OSX and `disabled` on other systems.
 - OpenCL2 functionalities are disable when Apple OpenCL library is used.
 

@@ -7,6 +7,7 @@ It is highly recommended that instead of using libmcl-sys directly your instead 
 - Cargo
 - Clang
 - OpenCL
+- Autotools
 - MCL (either manually installed or via ```cargo install mcl_sched```)
 
 ## How to build (Tested on Linux) without previous build of MCL

@@ -249,11 +249,17 @@ fn main() {
             // };
 
             // println!("cargo:warning=llvm_libs {llvm_ldflags}");
+            let mut ocl_lib = format!("");
+
+            if cfg!(not(target_os = "macos")) {
+                ocl_lib = format!("-L{ocl_libpath}");
+            }
+
             let ldflags = format!(
-                "-L{} -L{ocl_libpath} {llvm_ldflags}",
+                "-L{} {ocl_lib} {llvm_ldflags}",
                 libatomic_lib.display()
             );
-            // println!("cargo:warning=llvm_libs {ldflags}");
+            println!("cargo:warning={ldflags}");
             let mut mcl_config = autotools::Config::new(mcl_dest);
             mcl_config
                 .reconf("-ivfWnone")
@@ -271,6 +277,8 @@ fn main() {
             mcl_config.enable("shared-memory", None);
             #[cfg(feature = "pocl_extensions")]
             mcl_config.enable("pocl-extensions", None);
+            #[cfg(target_os = "macos")]
+            mcl_config.enable("appleocl", None);
 
             let mcl_build = mcl_config.try_build();
 
