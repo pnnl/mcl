@@ -254,6 +254,9 @@ static inline mcl_pobj *__build_program(mcl_program *p, unsigned int n) {
         case MCL_PRG_GRAPH:
             obj->cl_prg = clCreateProgramWithBuiltInKernels(clctx, 1, &dev, "dataflow", &ret);
             break;
+	case MCL_PRG_BUILTIN:
+	    obj->cl_prg = clCreateProgramWithBuiltInKernels(clctx, 1, &dev, (const char *)(p->path), &ret);
+	    break;
         default:
             eprintf("Unsupported program type! (flags=0x%lx)", p->flags);
             goto err;
@@ -331,6 +334,10 @@ int __set_prg(char *path, char *copts, unsigned long flags) {
         strcpy(copts+strlen(targ),path);
         copts[ strlen(targ)+strlen(path)]='\0';
         break;
+    }
+    case MCL_PRG_BUILTIN: {
+	archs = MCL_TASK_PROTEUS;
+	break;
     }
     default: {
         eprintf("Support for type of program 0x%lx missing.", flags);
