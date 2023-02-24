@@ -26,6 +26,10 @@ mcl_sched_LDFLAGS += -framework OpenCL
 endif
 
 
+if OSX
+mcl_sched_LDADD   =  libmcl_sched.la
+else
 mcl_sched_LDADD   =  libmcl_sched.la -lrt -lm
+endif 
 
 include_HEADERS   = $(top_srcdir)/src/sched/include/minos_sched.h

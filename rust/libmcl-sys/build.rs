@@ -186,16 +186,16 @@ fn main() {
                 .unwrap();
 
             //build deps
-            let libatomic_ops = mcl_dest.clone().join("deps/libatomic_ops");
-            let libatomic_build = autotools::Config::new(libatomic_ops)
-                .reconf("-ivfWnone")
-                .fast_build(true)
-                .build();
-            println!("libatomic_build {libatomic_build:?}");
-            let libatomic_inc = libatomic_build.clone().join("include");
-            let libatomic_lib = libatomic_build.clone().join("lib");
+            // let libatomic_ops = mcl_dest.clone().join("deps/libatomic_ops");
+            // let libatomic_build = autotools::Config::new(libatomic_ops)
+            //     .reconf("-ivfWnone")
+            //     .fast_build(true)
+            //     .build();
+            // println!("libatomic_build {libatomic_build:?}");
+            // let libatomic_inc = libatomic_build.clone().join("include");
+            // let libatomic_lib = libatomic_build.clone().join("lib");
 
-            let uthash_inc = mcl_dest.clone().join("deps/uthash/include");
+            // let uthash_inc = mcl_dest.clone().join("deps/uthash/include");
 
             if cfg!(feature = "shared_mem") {
                 std::fs::File::create(shm_path).unwrap();
@@ -249,18 +249,26 @@ fn main() {
             // };
 
             // println!("cargo:warning=llvm_libs {llvm_ldflags}");
+            let mut ocl_lib = format!("");
+            let mut ocl_inc = format!("");
+
+            if cfg!(not(target_os = "macos")) {
+                ocl_lib = format!("-L{ocl_libpath}");
+                ocl_inc = format!("-I{ocl_incpath}");
+            }
+
             let ldflags = format!(
-                "-L{} -L{ocl_libpath} {llvm_ldflags}",
-                libatomic_lib.display()
+                "{ocl_lib} {llvm_ldflags}",
+                // libatomic_lib.display()
             );
-            // println!("cargo:warning=llvm_libs {ldflags}");
+
+            
+            // println!("cargo:warning={ldflags}");
             let mut mcl_config = autotools::Config::new(mcl_dest);
             mcl_config
                 .reconf("-ivfWnone")
                 .cflag(format!(
-                    "-I{} -I{} -I{ocl_incpath}",
-                    uthash_inc.display(),
-                    libatomic_inc.display()
+                    "{ocl_inc}"
                 ))
                 .ldflag(ldflags)
                 .insource(true)
@@ -271,6 +279,8 @@ fn main() {
             mcl_config.enable("shared-memory", None);
             #[cfg(feature = "pocl_extensions")]
             mcl_config.enable("pocl-extensions", None);
+            // #[cfg(target_os = "macos")]
+            // mcl_config.enable("appleocl", None);
 
             let mcl_build = mcl_config.try_build();
 
@@ -345,6 +355,8 @@ fn main() {
         .allowlist_function("mcl_.*");
     #[cfg(feature = "shared_mem")]
     let bindings = bindings.clang_arg("-DMCL_SHARED_MEM");
+    #[cfg(target_os = "macos")]
+    let bindings = bindings.clang_arg("-DRUST_BUILD");
     let bindings = bindings
         .generate()
         // Unwrap the Result and panic on failure.

@@ -214,7 +214,7 @@ impl<'a> RegisteredBuffer<'a> {
     ///     let mcl = mcl_rs::MclEnvBuilder::new().num_workers(10).initialize();
     ///     mcl.load_prog("my_path", mcl_rs::PrgType::Src);
     ///     let mut a = vec![0;100];
-    ///     let buf = mcl.register_buffer(mcl_rs::TaskArg::inout_slice(&mut c)
+    ///     let buf = mcl.register_buffer(mcl_rs::TaskArg::inout_slice(&mut a)
     ///            .resident(true)
     ///            .dynamic(true),
     ///     );
@@ -233,7 +233,7 @@ impl<'a> RegisteredBuffer<'a> {
     ///     let mcl = mcl_rs::MclEnvBuilder::new().num_workers(10).initialize();
     ///     mcl.load_prog("my_path", mcl_rs::PrgType::Src);
     ///     let mut a = vec![0;100];
-    ///     let buf = mcl.register_buffer(mcl_rs::TaskArg::inout_slice(&mut c)
+    ///     let buf = mcl.register_buffer(mcl_rs::TaskArg::inout_slice(&mut a)
     ///            .resident(true)
     ///            .dynamic(true),
     ///     );
@@ -253,7 +253,7 @@ impl<'a> RegisteredBuffer<'a> {
     ///     let mcl = mcl_rs::MclEnvBuilder::new().num_workers(10).initialize();
     ///     mcl.load_prog("my_path", mcl_rs::PrgType::Src);
     ///     let mut a = vec![0;100];
-    ///     let buf = mcl.register_buffer(mcl_rs::TaskArg::inout_slice(&mut c)
+    ///     let buf = mcl.register_buffer(mcl_rs::TaskArg::inout_slice(&mut a)
     ///            .resident(true)
     ///            .dynamic(true),
     ///     );
@@ -289,14 +289,14 @@ impl<'a> RegisteredBuffer<'a> {
     ///     let mcl = mcl_rs::MclEnvBuilder::new().num_workers(10).initialize();
     ///     mcl.load_prog("my_path", mcl_rs::PrgType::Src);
     ///     let mut a = vec![0;100];
-    ///     let buf = mcl.register_buffer(mcl_rs::TaskArg::inout_slice(&mut c)
+    ///     let buf = mcl.register_buffer(mcl_rs::TaskArg::inout_slice(&mut a)
     ///            .resident(true)
     ///            .dynamic(true),
     ///     );
     ///     let sub_buf = buf.sub_buffer(10..20);
-    ///     assert!(buf.try_invalidate().is_err());
+    ///     assert!(!buf.try_invalidate());
     ///     drop(sub_buf);
-    ///     assert!(buf.try_invalidate().is_ok())
+    ///     assert!(buf.try_invalidate())
     ///```
     pub fn try_invalidate(&self) -> bool {
         if self.meta.cnt.fetch_sub(1, Ordering::SeqCst) == 1 {
@@ -325,27 +325,25 @@ impl<'a> RegisteredBuffer<'a> {
     ///     let mcl = mcl_rs::MclEnvBuilder::new().num_workers(10).initialize();
     ///     mcl.load_prog("my_path", mcl_rs::PrgType::Src);
     ///     let mut a = vec![0;100];
-    ///     let buf = mcl.register_buffer(mcl_rs::TaskArg::inout_slice(&mut c)
+    ///     let buf = mcl.register_buffer(mcl_rs::TaskArg::inout_slice(&mut a)
     ///            .resident(true)
     ///            .dynamic(true),
     ///     );
     ///     let sub_buf1 = buf.sub_buffer(10..20);
     ///     let sub_buf2 = buf.sub_buffer(15..25); // this call will succeed even though it overlaps with sub_buf1
-    ///     let tasks = async move {
-    ///         let pes: [u64; 3] = [1, 1, 1]
-    ///         let task_1 = mcl.task("my_kernel", 1)
-    ///                 .arg_buffer(mcl_rs::TaskArg::output_slice(sub_buf1))
-    ///                 .dev(mcl_rs::DevType::CPU)
-    ///                 .exec(pes);
-    ///         /// We can even create our next task sucessfully with the overlapping buffer because no actual work occurs until we call await
-    ///         let task_2 = mcl.task("my_kernel", 1)
-    ///                 .arg_buffer(mcl_rs::TaskArg::output_slice(sub_buf1))
-    ///                 .dev(mcl_rs::DevType::CPU)
-    ///                 .exec(pes);
-    ///     };
+    ///     let pes: [u64; 3] = [1, 1, 1];
+    ///     let task_1 = mcl.task("my_kernel", 1)
+    ///             .arg_buffer(sub_buf1)
+    ///             .dev(mcl_rs::DevType::CPU)
+    ///             .exec(pes);
+    ///     /// We can even create our next task sucessfully with the overlapping buffer because no actual work occurs until we call await
+    ///     let task_2 = mcl.task("my_kernel", 1)
+    ///             .arg_buffer(sub_buf2)
+    ///             .dev(mcl_rs::DevType::CPU)
+    ///             .exec(pes);
     ///     // drive both futures simultaneously -- based on the overlapping dependency, these task will in reality be executed serially
     ///     // as the internal implementation will prevent both tasks from allocating the overlapping sub_buffer regions simultaneously
-    ///     futures::future::join_all([task_1,task_2]);
+    ///     let task = futures::future::join_all([task_1,task_2]);
     ///     futures::executor::block_on(task);
     ///     
     ///```

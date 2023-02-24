@@ -20,6 +20,10 @@ Instructions for this can be found at [MCL](https://github.com/pnnl/mcl).
 ## Installing mcl_sched
 ### Required libraries/ crates
 * [libmcl-sys](https://github.com/pnnl/mcl/tree/master/rust/libmcl-sys) and its dependencies
+  * Clang
+  * OpenCL
+  * Autotools
+  * MCL (either manually installed or via ```cargo install mcl_sched```)
 * Other crates listed in Cargo.toml
 
 

@@ -23,10 +23,12 @@ extern "C"
 #include <sys/types.h>
 #include <mcl/mcl_config.h>
 
+#ifndef RUST_BUILD
 #ifdef __APPLE__
 #include <OpenCL/cl.h>
 #else
 #include <CL/cl.h>
+#endif
 #endif
 
 #define CL_MAX_PLATFORMS 64
