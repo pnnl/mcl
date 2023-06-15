@@ -24,7 +24,6 @@ static int ff_find_resource(sched_req_t *r) {
             continue;
 
         if (r->type == MCL_TASK_FPGA && res[i].dev->type == MCL_TASK_FPGA)
-
             goto found;
 
         for (int j = 0; j < MCL_DEV_DIMS && !stop; j++) {

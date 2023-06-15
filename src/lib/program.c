@@ -95,14 +95,14 @@ mcl_program* prgMap_add(char* path, char* opts, uint64_t flags, uint64_t archs)
 	p->key = key;
 	p->path = (char*) malloc(sizeof(char) * strlen(path) + 1);
 	if(p->path == NULL){
-		eprintf("Erorr allocating memory for program path. Aborting.");
+		eprintf("Error allocating memory for program path. Aborting.");
 		goto err_program;	  
 	}
 
 	if(opts){
 		p->opts = (char*) malloc(sizeof(char) * strlen(opts) + 1);
 		if(p->opts == NULL){
-			eprintf("Erorr allocating memory for program options. Aborting.");
+			eprintf("Error allocating memory for program options. Aborting.");
 			goto err_path;	  
 		}
 	}else
@@ -112,31 +112,36 @@ mcl_program* prgMap_add(char* path, char* opts, uint64_t flags, uint64_t archs)
         p->targets = archs;
 	p->objs = (mcl_pobj*) malloc(sizeof(mcl_pobj) * ndevs);
 	if(p->objs == NULL){
-		eprintf("Erorr allocating memory for program objects. Aborting.");
+		eprintf("Error allocating memory for program objects. Aborting.");
 		goto err_opts;	  
 	}
 
-	fd = open(path, O_RDONLY);
-	if(fd == -1){
-		eprintf("Error opening OpenCL program. Aborting.\n");
-		goto err_objs;
-	}
-	p->src_len = lseek(fd, 0, SEEK_END);
+	if (archs == MCL_TASK_PROTEUS) {  // skip file OpenCL source read for builtin-kernels
+		p->src_len = 0;
+		p->src = NULL;
+	} else {
+		fd = open(path, O_RDONLY);
+		if(fd == -1){
+			eprintf("Error opening OpenCL program. Aborting.\n");
+			goto err_objs;
+		}
+		p->src_len = lseek(fd, 0, SEEK_END);
 	
-	p->src = (char*) malloc(sizeof(char) * (p->src_len) + 1);
-	if(p->src == NULL){
-		eprintf("Erorr allocating memory for kernel source. Aborting.");
-		goto err_file;
-	}
+		p->src = (char*) malloc(sizeof(char) * (p->src_len) + 1);
+		if(p->src == NULL){
+			eprintf("Error allocating memory for kernel source. Aborting.");
+			goto err_file;
+		}
 
-	lseek(fd, 0, SEEK_SET);
-	if(read(fd, (void*) (p->src), p->src_len) != p->src_len){
-		eprintf("Error loading OpenCL code from %s. Aborting.\n", path);
-		goto err_src;
-	}
+		lseek(fd, 0, SEEK_SET);
+		if(read(fd, (void*) (p->src), p->src_len) != p->src_len){
+			eprintf("Error loading OpenCL code from %s. Aborting.\n", path);
+			goto err_src;
+		}
 
-	p->src[p->src_len] = '\0';
-	close(fd);
+		p->src[p->src_len] = '\0';
+		close(fd);
+	} // end file read skip	
 	
 	strcpy(p->path, path);
 	if(opts) 

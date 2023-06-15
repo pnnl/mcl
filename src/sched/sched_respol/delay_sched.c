@@ -67,6 +67,9 @@ static int delay_find_resource(sched_req_t *r) {
         case MCL_TASK_FPGA:
             mult = MCL_DEV_MUL_FPGA;
             break;
+        case MCL_TASK_DF:
+            mult = MCL_DEV_MUL_DF;
+            break;
         }
 
         uint64_t needed_mem = r->mem - res_mem[i];
