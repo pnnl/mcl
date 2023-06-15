@@ -269,7 +269,7 @@ int ocl_setup(cl_device_id** dev, cl_context* ctxt, cl_command_queue* q, unsigne
 	*q = clCreateCommandQueueWithProperties(*ctxt, *(*dev + id), props, &ret);
 #else
 #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
-    *q = clCreateCommandQueue(*ctxt, *(*dev + id), NULL, &ret);
+    *q = clCreateCommandQueue(*ctxt, *(*dev + id), 0, &ret);
 #pragma GCC diagnostic pop
 #endif
     if(ret != CL_SUCCESS){

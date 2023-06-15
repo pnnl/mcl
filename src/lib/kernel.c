@@ -156,9 +156,8 @@ void kerMap_finit(void)
 	mcl_kernel* e;
 	mcl_kernel* tmp;
 	
-	Dprintf("Removing cached programs...");
+	Dprintf("Removing cached kernel...");
 	LL_FOREACH_SAFE(kerMap, e, tmp){
 		__kerMap_remove(e);
-		free(e);
 	}
 }

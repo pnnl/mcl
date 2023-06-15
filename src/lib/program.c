@@ -176,6 +176,7 @@ static inline void __prgMap_remove(mcl_program *p)
     if (p->opts)
         free(p->opts);
     free(p->key);
+    free(p);
 }
 
 int prgMap_remove(mcl_program *p)
@@ -201,6 +202,5 @@ void prgMap_finit(void)
 	Dprintf("Removing cached programs...");
 	LL_FOREACH_SAFE(prgMap, e, tmp){
 		__prgMap_remove(e);
-		free(e);
 	}
 }

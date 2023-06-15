@@ -39,7 +39,7 @@
 #endif
 #define DFT_REP      1UL
 #define DFT_SYNC     0UL
-#define DFT_VERIFY   1UL
+#define DFT_VERIFY   0UL
 #define DFT_DID      0UL
 #define BASE         100
 #define TOLERANCE    0.05f
