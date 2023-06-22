@@ -1,17 +1,21 @@
 # mcl-rs
-This project hosts the high-level wrappers of the mcl rust bindings.
+This project hosts the high-level wrappers of the MCL rust bindings.
 
 ## Summary
-This crate provides high-level, rust-friendly bindings for mcl. The purpose of these bindings are
-to expose a user-friendlier API to what the low-level libmcl-sys API offers. It provides wrappers
-for all mcl public functions and tries to provide safety at compilation type, however,
+This crate provides high-level, rust-friendly bindings for MCL. The purpose of these bindings are
+to expose a user-friendlier (and safer) API to what the low-level libmcl-sys API offers. It provides wrappers
+for most mcl public functions and tries to provide safety at compilation type, however,
 because of the nature of the library counting on a C project there are cases that it's only possible
-to catch errors at runtime.
+to catch errors at runtime, as well as a few APIS that currently cannot be checked at all and are thus marked unsafe (but are protected by a feature flag).
 
 
 ## Building mcl-rs
 ### Required libraries/ crates
 * [libmcl-sys](https://github.com/pnnl/mcl/tree/master/rust/libmcl-sys) and its dependencies
+  * Clang
+  * OpenCL
+  * Autotools
+  * MCL (either manually installed or via ```cargo install mcl_sched```)
 * Other crates listed in Cargo.toml
 
 
@@ -26,12 +30,32 @@ Once all dependencies have been taken care of, we can build mcl-rs.
 
 2. ```cargo build --release```
 
+## Installing MCL Scheduler
+The MCL scheduler can easily be installed via:
+```bash
+cargo install mcl_sched
+```
+
+Note, if you have manually built MCL from the C source code, you will already have the ```mcl_sched``` binary in the MCL install directory.
+You are free to use either your manually built mcl_sched or the one installed via cargo
+
+## FEATURE FLAGS
+We re expose three feauture flags (from libmcl-rs), losely corresponding to configuration options of the underlying MCL c-library
+1.  mcl_debug - enables debug logging output from the underlying MCL c-libary
+2.  shared_mem - enables interprocess host shared memory buffers -- this enables a few unsafe APIs
+3.  pocl_extensions - enables interprocess device based shared memory buffers, requires a patched version of POCL 1.8 to have been succesfully installed (please see <https://github.com/pnnl/mcl/tree/dev#using-custom-pocl-extensions> for more information) -- this enables a few unsafe APIs
+
 ## Testing
 mcl-rs comes with a set of unit tests that can be executed with:
 ```
 cargo test <test_name>
 ``` 
-**Note**: ```MCL``` scheduler needs to be running when the above command is executed.
+**Reminder**: The MCL scheduler should be running when executing the tests.
+if you installed mcl_sched via cargo then you should be able to invoke directly:
+```bash
+ mcl_sched
+```
+If you built mcl manually you may need to specify the path to the mcl_sched binary
 
 Removing the test-name would cause cargo to run all available tests, however, this could create issues since tests would run in parallel causing multiple threads to try to acquire access to the mcl_scheduler shmem object at the same time which might lead to failure.
 

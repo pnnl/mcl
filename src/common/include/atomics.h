@@ -9,4 +9,6 @@
 #define fas(addr, val)            __sync_fetch_and_sub(addr, val)
 #define ainc(addr)                faa(addr, 1)
 #define adec(addr)                fas(addr, 1)
+#define ld_acq(addr) __atomic_load_n(addr, __ATOMIC_ACQUIRE)
+#define add_fetch(addr, val) __atomic_add_fetch(addr, val, __ATOMIC_ACQ_REL)
 #endif

@@ -1,6 +1,6 @@
 [package]
 name = "vector_add"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 authors = ["Ryan D. Friese <ryan.friese@pnnl.gov>", "Polykarpos Thomadakis <polykarpos.thomadakis@pnnl.gov>",  "Roberto Gioiosa <roberto.gioiosa@pnnl.gov>"]
 description = "Example of how to perform a vector addition"
@@ -10,4 +10,13 @@ license-file = "LICENSE"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-mcl-rs = "0.1.2"
+mcl-rs = {version = "0.2.0-rc2" }
+futures = "0.3.6"
+
+[[bin]]
+name = "multi_tasks"
+path = "src/exercises/multi_tasks.rs"
+
+[[bin]]
+name = "simultaneous_multi_tasks"
+path = "src/exercises/simultaneous_multi_tasks.rs"

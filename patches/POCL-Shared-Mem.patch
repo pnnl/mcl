@@ -1,0 +1,1444 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 3da10e19..e7bd5e4b 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -1287,6 +1287,10 @@ if(ENABLE_CUDA)
+ 
+   set(OCL_DRIVERS "${OCL_DRIVERS} cuda")
+   set(OCL_TARGETS "${OCL_TARGETS} cuda")
++
++  find_package(CUDA REQUIRED)
++  include_directories(${CUDA_INCLUDE_DIRS})
++  
+   # this is for config.h
+   # TODO unify with autotools
+   set(BUILD_CUDA 1)
+diff --git a/include/CL/cl.h b/include/CL/cl.h
+index f33f999f..494e8be7 100644
+--- a/include/CL/cl.h
++++ b/include/CL/cl.h
+@@ -36,6 +36,10 @@ typedef struct _cl_kernel *         cl_kernel;
+ typedef struct _cl_event *          cl_event;
+ typedef struct _cl_sampler *        cl_sampler;
+ 
++
++typedef struct _cl_shm_hdl *        cl_shm_hdl;
++typedef cl_int                      cl_shm_key;
++
+ typedef cl_uint             cl_bool;                     /* WARNING!  Unlike cl_ types in cl_platform.h, cl_bool is not guaranteed to be the same size as the bool in kernels. */
+ typedef cl_ulong            cl_bitfield;
+ typedef cl_bitfield         cl_device_type;
+@@ -63,6 +67,7 @@ typedef cl_uint             cl_command_queue_info;
+ typedef cl_uint             cl_channel_order;
+ typedef cl_uint             cl_channel_type;
+ typedef cl_bitfield         cl_mem_flags;
++typedef cl_bitfield         cl_shm_mem_flags;
+ #ifdef CL_VERSION_2_0
+ typedef cl_bitfield         cl_svm_mem_flags;
+ #endif
+@@ -527,6 +532,7 @@ typedef struct _cl_name_version {
+ #define CL_MEM_KERNEL_READ_AND_WRITE                (1 << 12)
+ #endif
+ 
++#define CL_MEM_SHM_FREE_DEVICE_MEM                  (1 << 0)
+ #ifdef CL_VERSION_1_2
+ 
+ /* cl_mem_migration_flags - bitfield */
+@@ -1895,8 +1901,31 @@ clEnqueueTask(cl_command_queue  command_queue,
+               const cl_event *  event_wait_list,
+               cl_event *        event) CL_EXT_SUFFIX__VERSION_1_2_DEPRECATED;
+ 
++#define CL_SHM_MAX_NAME_LEN                         64
++
++extern CL_API_ENTRY cl_shm_hdl CL_API_CALL
++clShmOpen(const char*   mem_name,
++          size_t        size,
++          cl_int        flags,
++          cl_int *      errcode_ret);
++
++extern CL_API_ENTRY cl_mem CL_API_CALL
++clShmGet(cl_context     context,
++         cl_shm_hdl     shm_hdl,
++         cl_mem_flags   flags,
++         void*          host_ptr,
++         cl_int *       errcode_ret);
++
++extern CL_API_ENTRY cl_int CL_API_CALL
++clShmRelease(cl_mem           mem,
++             cl_shm_hdl       shm_id,
++             cl_shm_mem_flags flags);
++
++extern CL_API_ENTRY cl_int CL_API_CALL
++clShmClose(cl_shm_hdl   shm_id);
++
+ #ifdef __cplusplus
+ }
+ #endif
+ 
+-#endif  /* __OPENCL_CL_H */
++#endif  /* __OPENCL_CL_H */
+\ No newline at end of file
+diff --git a/lib/CL/CMakeLists.txt b/lib/CL/CMakeLists.txt
+index ece05cb9..d3af3ed1 100644
+--- a/lib/CL/CMakeLists.txt
++++ b/lib/CL/CMakeLists.txt
+@@ -128,6 +128,10 @@ set(POCL_LIB_SOURCES  "clCreateContextFromType.c"
+                    "clRetainDevice.c"
+                    "clCreateSubDevices.c"
+                    "clUnloadPlatformCompiler.c"
++                   "clShmOpen.c"
++                   "clShmGet.c"
++                   "clShmRelease.c"
++                   "clShmClose.c"
+                    "clSetContentSizeBufferPoCL.c"
+                    "pocl_cl.h" "pocl_util.h" "pocl_util.c"
+                    "pocl_image_util.c" "pocl_image_util.h"
+diff --git a/lib/CL/clCreateBuffer.c b/lib/CL/clCreateBuffer.c
+index 03185744..280c5936 100644
+--- a/lib/CL/clCreateBuffer.c
++++ b/lib/CL/clCreateBuffer.c
+@@ -114,7 +114,7 @@ pocl_create_memobject (cl_context context, cl_mem_flags flags, size_t size,
+   mem->type = type;
+   mem->flags = flags;
+   mem->device_supports_this_image = device_image_support;
+-
++  
+   mem->device_ptrs = (pocl_mem_identifier *)calloc (
+       pocl_num_devices, sizeof (pocl_mem_identifier));
+   POCL_GOTO_ERROR_COND ((mem->device_ptrs == NULL), CL_OUT_OF_HOST_MEMORY);
+diff --git a/lib/CL/clGetPlatformIDs.c b/lib/CL/clGetPlatformIDs.c
+index 69c8faa1..f126c30d 100644
+--- a/lib/CL/clGetPlatformIDs.c
++++ b/lib/CL/clGetPlatformIDs.c
+@@ -200,10 +200,10 @@ struct _cl_icd_dispatch pocl_dispatch = {
+   NULL, /* &clUnknown159 */
+   NULL, /* &clUnknown160 */
+   NULL, /* &clUnknown161 */
+-  NULL, /* &clUnknown162 */
+-  NULL, /* &clUnknown163 */
+-  NULL, /* &clUnknown164 */
+-  NULL, /* &clUnknown165 */
++  &POname(clShmOpen), /* clShmOpen*/
++  &POname(clShmGet), /* clShmGet */
++  &POname(clShmRelease), /* clShmRelease */
++  &POname(clShmClose), /* clShmClose */
+ #endif
+ #if (OCL_ICD_IDENTIFIED_FUNCTIONS > 127)
+   NULL, /* &clUnknown166 */
+diff --git a/lib/CL/clShmClose.c b/lib/CL/clShmClose.c
+new file mode 100644
+index 00000000..462d4296
+--- /dev/null
++++ b/lib/CL/clShmClose.c
+@@ -0,0 +1,89 @@
++/* OpenCL runtime library: clShmClose()
++
++   Alok Kamatar / Pcific Northwest National Lab
++   
++   Permission is hereby granted, free of charge, to any person obtaining a copy
++   of this software and associated documentation files (the "Software"), to deal
++   in the Software without restriction, including without limitation the rights
++   to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
++   copies of the Software, and to permit persons to whom the Software is
++   furnished to do so, subject to the following conditions:
++   
++   The above copyright notice and this permission notice shall be included in
++   all copies or substantial portions of the Software.
++   
++   THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
++   IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
++   FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
++   AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
++   LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
++   OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
++   THE SOFTWARE.
++*/
++
++#include "pocl_cl.h"
++#include "devices.h"
++#include "common.h"
++#include "pocl_util.h"
++
++#include <stdio.h>
++#include <sys/mman.h>
++#include <sys/types.h>
++#include <unistd.h>
++#include <stdlib.h>
++
++
++CL_API_ENTRY cl_int CL_API_CALL
++POname(clShmClose)(cl_shm_hdl     shm_hdl)
++{
++  POCL_MSG_PRINT_GENERAL("Starting shm close.\n");
++  int i;
++  int new_refcount;
++
++  sem_wait(&shm_hdl->lock);
++  POCL_RELEASE_OBJECT(shm_hdl, new_refcount);
++  POCL_MSG_PRINT_GENERAL ("Release mem obj %p  %d\n", shm_hdl, new_refcount);
++
++  /** TODO: (?) Free device memory **/
++  POCL_MSG_PRINT_GENERAL ("Allocating memory.\n.");
++  cl_device_id* pocl_devices = malloc (sizeof(cl_device_id) * pocl_num_devices);
++  POCL_MSG_PRINT_GENERAL ("Getting number of devices.\n");
++  int num_devices = pocl_get_devices(CL_DEVICE_TYPE_ALL, pocl_devices, pocl_num_devices);
++  POCL_MSG_PRINT_GENERAL ("Num devices: %d\n", num_devices);
++  for (i = 0; i < num_devices; ++i)
++    {
++      cl_device_id dev = pocl_devices[i];
++      if(shm_hdl->device_keys[dev->dev_id].available)
++        {
++          POCL_MSG_PRINT_GENERAL("Freeing memory from device.\n");
++          if(dev->ops->shm_free (dev, shm_hdl))
++            POCL_MSG_PRINT_GENERAL("Could not free device memory.\n");
++          else
++            shm_hdl->device_keys[dev->dev_id].available = 0;
++        }
++      else
++        {
++          POCL_MSG_PRINT_GENERAL("Memory not available on device.\n");
++        }
++    }
++  sem_post(&shm_hdl->lock);
++  POCL_MSG_PRINT_GENERAL("Successfully executed sem post.\n");
++
++  if(new_refcount == 0){
++    POCL_MSG_PRINT_GENERAL("Trying to destroy object.\n");
++    POCL_DESTROY_OBJECT (shm_hdl);
++    POCL_MSG_PRINT_GENERAL("Destroyed object.\n");
++  }
++
++  POCL_MSG_PRINT_GENERAL("Duplicating name: %s.\n", shm_hdl->name);
++  char* name = strdup(shm_hdl->name);
++  POCL_MSG_PRINT_GENERAL("Unmapping memory.\n");
++  munmap(shm_hdl, sizeof(cl_shm_hdl_t) + (sizeof(cl_shm_dev_key_t) * pocl_num_devices));
++  POCL_MSG_PRINT_GENERAL("Unlinking name\n");
++  shm_unlink(name);
++  POCL_MSG_PRINT_GENERAL("Freeing name.\n");
++  free(name);
++  POCL_MSG_PRINT_GENERAL("Returning.\n");
++  return CL_SUCCESS;
++}
++POsym(clShmClose)
+diff --git a/lib/CL/clShmGet.c b/lib/CL/clShmGet.c
+new file mode 100644
+index 00000000..91188c8b
+--- /dev/null
++++ b/lib/CL/clShmGet.c
+@@ -0,0 +1,185 @@
++/* OpenCL runtime library: clShmGet()
++
++   Alok Kamatar / Pacific Northwest National Lab
++   
++   Permission is hereby granted, free of charge, to any person obtaining a copy
++   of this software and associated documentation files (the "Software"), to deal
++   in the Software without restriction, including without limitation the rights
++   to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
++   copies of the Software, and to permit persons to whom the Software is
++   furnished to do so, subject to the following conditions:
++   
++   The above copyright notice and this permission notice shall be included in
++   all copies or substantial portions of the Software.
++   
++   THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
++   IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
++   FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
++   AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
++   LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
++   OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
++   THE SOFTWARE.
++*/
++
++#include "pocl_cl.h"
++#include "devices.h"
++#include "common.h"
++#include "pocl_util.h"
++
++#include <sys/mman.h>
++#include <sys/types.h>
++#include <unistd.h>
++
++CL_API_ENTRY cl_mem CL_API_CALL
++POname(clShmGet)(cl_context     context,
++                    cl_shm_hdl_t*     shm_hdl,
++                    cl_mem_flags      flags,
++                    void*             host_ptr,
++                    cl_int *          errcode_ret)
++{
++  cl_mem mem = NULL;
++  cl_device_id device;
++  int errcode = CL_SUCCESS;
++  unsigned i, j;
++
++  POCL_GOTO_ERROR_COND ((!IS_CL_OBJECT_VALID (context)), CL_INVALID_CONTEXT);
++
++  if (flags == 0)
++    flags = CL_MEM_READ_WRITE;
++  
++  /* validate flags */
++  
++  POCL_GOTO_ERROR_ON((flags > (1<<10)-1), CL_INVALID_VALUE, "Flags must "
++    "be < 1024 (there are only 10 flags)\n");
++
++  POCL_GOTO_ERROR_ON(((flags & CL_MEM_READ_WRITE) &&
++    (flags & CL_MEM_WRITE_ONLY || flags & CL_MEM_READ_ONLY)),
++    CL_INVALID_VALUE, "Invalid flags: CL_MEM_READ_WRITE cannot be used "
++    "together with CL_MEM_WRITE_ONLY or CL_MEM_READ_ONLY\n");
++
++  POCL_GOTO_ERROR_ON(((flags & CL_MEM_READ_ONLY) &&
++    (flags & CL_MEM_WRITE_ONLY)), CL_INVALID_VALUE, "Invalid flags: "
++    "can't have both CL_MEM_WRITE_ONLY and CL_MEM_READ_ONLY\n");
++
++  POCL_GOTO_ERROR_ON(((flags & CL_MEM_USE_HOST_PTR)),
++    CL_INVALID_VALUE, "Invalid flags: CL_MEM_USE_HOST_PTR cannot be used "
++    "with shared memory\n");
++
++  POCL_GOTO_ERROR_ON(((flags & CL_MEM_HOST_WRITE_ONLY) &&
++    (flags & CL_MEM_HOST_READ_ONLY)), CL_INVALID_VALUE, "Invalid flags: "
++    "can't have both CL_MEM_HOST_READ_ONLY and CL_MEM_HOST_WRITE_ONLY\n");
++
++  POCL_GOTO_ERROR_ON(((flags & CL_MEM_HOST_NO_ACCESS) &&
++    ((flags & CL_MEM_HOST_READ_ONLY) || (flags & CL_MEM_HOST_WRITE_ONLY))),
++    CL_INVALID_VALUE, "Invalid flags: CL_MEM_HOST_NO_ACCESS cannot be used "
++    "together with CL_MEM_HOST_READ_ONLY or CL_MEM_HOST_WRITE_ONLY\n");
++
++  if (host_ptr == NULL)
++    {
++      POCL_GOTO_ERROR_ON(((flags & CL_MEM_COPY_HOST_PTR)), CL_INVALID_HOST_PTR,
++        "host_ptr is NULL, but flags specify {COPY|USE}_HOST_PTR\n");
++    }
++  else
++    {
++      POCL_GOTO_ERROR_ON(((~flags & CL_MEM_COPY_HOST_PTR)), CL_INVALID_HOST_PTR,
++        "host_ptr is not NULL, but flags don't specify {COPY|USE}_HOST_PTR\n");
++    }
++
++  POCL_GOTO_ERROR_ON ((shm_hdl->size > context->max_mem_alloc_size),
++                      CL_INVALID_BUFFER_SIZE,
++                      "Size (%zu) is bigger than max mem alloc size (%zu) "
++                      "of all devices in context\n",
++                      shm_hdl->size, context->max_mem_alloc_size);
++
++  mem = (cl_mem)calloc (1, sizeof (struct _cl_mem));
++  POCL_GOTO_ERROR_COND ((mem == NULL), CL_OUT_OF_HOST_MEMORY);
++
++  POCL_INIT_OBJECT (mem);
++  mem->type = CL_MEM_OBJECT_BUFFER;
++  mem->flags = flags;
++  
++  mem->device_ptrs = (pocl_mem_identifier *)calloc (
++        pocl_num_devices, sizeof (pocl_mem_identifier));
++    POCL_GOTO_ERROR_COND ((mem->device_ptrs == NULL), CL_OUT_OF_HOST_MEMORY);
++
++  mem->size = shm_hdl->size;
++  mem->context = context;
++  mem->is_image = CL_FALSE;
++
++  mem->mem_host_ptr_version = 0;
++  mem->latest_version = 0;
++  
++  mem->origin = 0;
++  mem->mem_host_ptr = host_ptr;
++  
++  
++  sem_wait(&shm_hdl->lock);
++  for (i = 0; i < context->num_devices; ++i)
++    {
++      device = context->devices[i];
++      if(!shm_hdl->device_keys[device->dev_id].available)
++        {
++          shm_hdl->device_keys[device->dev_id].available = 1;
++          shm_hdl->device_keys[device->dev_id].pocl_refcount = 1;
++          POCL_MSG_PRINT_GENERAL("Initializing device shared memory.\n");
++          cl_int ret = device->ops->shm_create_obj(device, mem, shm_hdl);
++          if(ret != CL_SUCCESS)
++            {
++              errcode = CL_MEM_OBJECT_ALLOCATION_FAILURE;
++              goto ERROR_CLEAN_MEM_AND_DEVICE;
++            }
++          shm_hdl->device_keys[device->dev_id].owning_process = getpid();
++          POCL_MSG_PRINT_GENERAL("Successfully initialized device shared memory.\n");
++        } 
++      else 
++        {
++          //The device keys are not full POCL objects, but they still have a refount
++          //Unlike other POCL objects, they do not have a lock and they will exist beyond
++          //When the refcount goes to 0
++          POCL_RETAIN_OBJECT_UNLOCKED(&shm_hdl->device_keys[device->dev_id]);
++          cl_int ret = device->ops->shm_get_obj(device, mem, shm_hdl);
++          if(ret != CL_SUCCESS)
++            {
++              errcode = CL_MEM_OBJECT_ALLOCATION_FAILURE;
++              goto ERROR_CLEAN_MEM_AND_DEVICE;
++            }
++        }
++    }
++  sem_post(&shm_hdl->lock);
++  msync(&shm_hdl->device_keys, sizeof(cl_shm_dev_key_t) * pocl_num_devices, MS_INVALIDATE);
++
++  if ((flags & CL_MEM_ALLOC_HOST_PTR))
++    {
++      POCL_GOTO_ERROR_ON ((pocl_alloc_or_retain_mem_host_ptr (mem) != 0),
++            CL_OUT_OF_HOST_MEMORY,
++            "Cannot allocate backing memory!\n");
++      mem->mem_host_ptr_version = 0;
++      mem->latest_version = 0;
++    }
++  POCL_RETAIN_OBJECT(context);
++
++  if (errcode_ret != NULL)
++    *errcode_ret = CL_SUCCESS;
++  return mem;
++
++  
++
++ERROR_CLEAN_MEM_AND_DEVICE:
++  for (j = 0; j < i; ++j)
++    {
++      device = context->devices[j];
++      /** TODO: Figure out what should be freed and what should not **/
++      device->ops->free(device, mem);
++    }
++
++ERROR:
++  if (mem)
++    POCL_MEM_FREE (mem->device_ptrs);
++  POCL_MEM_FREE(mem);
++  if(errcode_ret)
++    {
++      *errcode_ret = errcode;
++    }
++  return NULL;
++}
++POsym(clShmGet)
+diff --git a/lib/CL/clShmOpen.c b/lib/CL/clShmOpen.c
+new file mode 100644
+index 00000000..4841dce8
+--- /dev/null
++++ b/lib/CL/clShmOpen.c
+@@ -0,0 +1,119 @@
++/* OpenCL runtime library: clShmOpen()
++
++   Alok Kamatar / Pacific Northwest National Lab
++   
++   Permission is hereby granted, free of charge, to any person obtaining a copy
++   of this software and associated documentation files (the "Software"), to deal
++   in the Software without restriction, including without limitation the rights
++   to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
++   copies of the Software, and to permit persons to whom the Software is
++   furnished to do so, subject to the following conditions:
++   
++   The above copyright notice and this permission notice shall be included in
++   all copies or substantial portions of the Software.
++   
++   THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
++   IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
++   FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
++   AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
++   LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
++   OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
++   THE SOFTWARE.
++*/
++
++#include "pocl_cl.h"
++#include "devices.h"
++#include "common.h"
++#include "pocl_util.h"
++
++#include <stdio.h>
++#include <sys/mman.h>
++#include <sys/stat.h>        /* For mode constants */
++#include <fcntl.h>
++#include <sys/types.h>
++#include <sys/stat.h>
++#include <fcntl.h>
++#include <unistd.h>
++#include <errno.h>
++
++CL_API_ENTRY cl_shm_hdl CL_API_CALL
++POname(clShmOpen)(const char* mem_name,
++                    size_t        size,
++                    cl_int        flags,
++                    cl_int *      errcode_ret)
++{
++  cl_shm_hdl hdl = NULL;
++  cl_device_id device;
++  int errcode;
++  unsigned i, j;
++
++  POCL_MSG_PRINT_GENERAL ("Starting SHM Open.\n");
++
++  POCL_GOTO_ERROR_COND((size == 0), CL_INVALID_BUFFER_SIZE);
++
++  if(flags & O_CREAT)
++    flags |= O_EXCL;
++
++  int fd = shm_open(mem_name, O_RDWR | flags, S_IRUSR | S_IWUSR);
++  POCL_GOTO_ERROR_COND((fd < 0), CL_OUT_OF_RESOURCES);
++
++  if(flags & O_CREAT)
++    {
++      errcode = ftruncate(fd, sizeof(cl_shm_hdl_t) + sizeof(cl_shm_dev_key_t) * pocl_num_devices);
++      POCL_GOTO_ERROR_COND(errcode, CL_INVALID_BUFFER_SIZE);
++      POCL_MSG_PRINT_GENERAL ("Created Shared Memory.\n");
++    }
++
++  hdl = mmap(
++    NULL,  sizeof(cl_shm_hdl_t) + sizeof(cl_shm_dev_key_t) * pocl_num_devices, 
++    PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
++  POCL_GOTO_ERROR_COND(!hdl, CL_OUT_OF_HOST_MEMORY);
++  close(fd);
++  POCL_MSG_PRINT_GENERAL ("Successfully Mapped memory.\n");
++
++  /** TODO: Deal with initializing state **/
++  if(!(flags && O_CREAT))
++  {
++    int err;
++    do
++    {
++      err = sem_wait(&hdl->lock);
++    } while (err == -1 && errno == EINVAL);
++  }
++
++  if(hdl->initialized)
++  {
++    POCL_MSG_PRINT_GENERAL ("Handle previously initialized.\n");
++    int new_refcount;
++    POCL_RETAIN_OBJECT_REFCOUNT(hdl, new_refcount);
++    POCL_MSG_PRINT_REFCOUNTS ("Obtain handle at %p\n", hdl);
++    msync(&hdl, sizeof(cl_shm_hdl_t), MS_INVALIDATE);
++    goto SUCCESS;
++  }
++
++  POCL_INIT_OBJECT(hdl);
++  strncpy(hdl->name, mem_name, CL_SHM_MAX_NAME_LEN);
++  hdl->name[CL_SHM_MAX_NAME_LEN - 1] = '\0';
++  hdl->shmfd = fd;
++  hdl->flags = flags;
++  hdl->owning_device = NULL;
++  hdl->size = size;
++  hdl->shared_mem_allocation_owner_id = -1;
++  hdl->initialized = 1;
++  POCL_GOTO_ERROR_COND(sem_init(&hdl->lock, 1, 0) == -1, CL_OUT_OF_RESOURCES);
++  msync(&hdl, sizeof(cl_shm_hdl_t), MS_INVALIDATE);
++
++SUCCESS:
++  if(errcode_ret)
++    *errcode_ret = CL_SUCCESS;
++  POCL_MSG_PRINT_GENERAL ("Finished SHM Open Successfully.\n");
++  sem_post(&hdl->lock);
++  return hdl;
++
++ERROR:
++  if(errcode_ret)
++    *errcode_ret = errcode;
++  //POCL_MSG_PRINT_GENERAL2 ( "SHM Open Failed.\n" );
++  return NULL;
++}
++POsym(clShmOpen)
+diff --git a/lib/CL/clShmRelease.c b/lib/CL/clShmRelease.c
+new file mode 100644
+index 00000000..06f9c88d
+--- /dev/null
++++ b/lib/CL/clShmRelease.c
+@@ -0,0 +1,121 @@
++/* OpenCL runtime library: clShmRelease()
++
++   Alok Kamatar / Pacific Northwest National Lab
++   
++   Permission is hereby granted, free of charge, to any person obtaining a copy
++   of this software and associated documentation files (the "Software"), to deal
++   in the Software without restriction, including without limitation the rights
++   to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
++   copies of the Software, and to permit persons to whom the Software is
++   furnished to do so, subject to the following conditions:
++   
++   The above copyright notice and this permission notice shall be included in
++   all copies or substantial portions of the Software.
++   
++   THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
++   IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
++   FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
++   AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
++   LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
++   OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
++   THE SOFTWARE.
++*/
++
++#include "utlist.h"
++#include "pocl_cl.h"
++#include "devices.h"
++#include <sys/mman.h>
++#include <sys/types.h>
++#include <unistd.h>
++
++CL_API_ENTRY cl_int CL_API_CALL
++POname(clShmRelease)(cl_mem memobj, cl_shm_hdl hdl, cl_shm_mem_flags flags)
++{
++  POCL_MSG_PRINT_GENERAL("Starting clShmRelease.\n");
++  int new_refcount;
++  cl_device_id dev;
++  cl_mem parent = NULL;
++  cl_int ret = CL_SUCCESS;
++  unsigned i;
++  mem_mapping_t *mapping, *temp;
++  mem_destructor_callback_t *callback, *next_callback;
++
++  POCL_RETURN_ERROR_COND((memobj == NULL), CL_INVALID_MEM_OBJECT);
++
++  cl_context context = memobj->context;
++
++  POCL_RELEASE_OBJECT(memobj, new_refcount);
++
++  POCL_MSG_PRINT_REFCOUNTS ("Release mem obj %p  %d\n", memobj, new_refcount);
++
++  /* OpenCL 1.2 Page 118:
++
++     After the memobj reference count becomes zero and commands queued for execution on 
++     a command-queue(s) that use memobj have finished, the memory object is deleted. If 
++     memobj is a buffer object, memobj cannot be deleted until all sub-buffer objects associated 
++     with memobj are deleted.
++  */
++
++  if (new_refcount == 0)
++    {
++      POCL_MSG_PRINT_REFCOUNTS ("Free mem obj %p\n", memobj);
++      if (memobj->parent == NULL)
++        {
++          sem_wait(&hdl->lock);
++          for (i = 0; i < context->num_devices; ++i)
++            {
++              dev = context->devices[i];
++              dev->ops->shm_release_obj (dev, memobj, hdl);
++              memobj->device_ptrs[dev->dev_id].mem_ptr = NULL;
++
++              POCL_MSG_PRINT_GENERAL("Releasing Memory from device.\n");             
++              POCL_RELEASE_OBJECT_UNLOCKED(&hdl->device_keys[dev->dev_id], new_refcount);
++              POCL_MSG_PRINT_REFCOUNTS ("Free device keys obj %p\n", &hdl->device_keys[dev->dev_id]);
++              if(flags & CL_MEM_SHM_FREE_DEVICE_MEM && new_refcount == 0)
++                {
++                  POCL_MSG_PRINT_GENERAL("Freeing Memory from device.\n");
++                  dev->ops->shm_free (dev, hdl);
++                  hdl->device_keys[dev->dev_id].available = 0;
++                }
++            }
++            msync(&hdl->device_keys, sizeof(cl_shm_dev_key_t) * pocl_num_devices, 0);
++            sem_post(&hdl->lock);
++
++        }
++      DL_FOREACH_SAFE(memobj->mappings, mapping, temp)
++        {
++          POCL_MEM_FREE(mapping);
++        }
++      memobj->mappings = NULL;
++
++      parent = memobj->parent;
++
++      /* Free host mem allocated by the runtime (not for sub buffers) */
++      if (memobj->parent == NULL && (memobj->flags & CL_MEM_ALLOC_HOST_PTR)
++          && memobj->mem_host_ptr != NULL)
++        {
++          POCL_MEM_FREE(memobj->mem_host_ptr);
++        }
++      POCL_MEM_FREE(memobj->device_ptrs);
++
++      /* Fire any registered destructor callbacks */
++      callback = memobj->destructor_callbacks;
++      while (callback)
++      {
++        callback->pfn_notify (memobj, callback->user_data);
++        next_callback = callback->next;
++        free (callback);
++        callback = next_callback;
++      }
++
++      POCL_DESTROY_OBJECT (memobj);
++      POCL_MEM_FREE(memobj);
++
++      if (parent)
++        POname(clReleaseMemObject)(parent);
++      POname(clReleaseContext)(context);
++    }
++  
++  return CL_SUCCESS;
++}
++POsym(clShmRelease)
+diff --git a/lib/CL/devices/basic/basic.c b/lib/CL/devices/basic/basic.c
+index bab231b9..518dfb8f 100644
+--- a/lib/CL/devices/basic/basic.c
++++ b/lib/CL/devices/basic/basic.c
+@@ -39,6 +39,11 @@
+ #include <string.h>
+ #include <unistd.h>
+ #include <utlist.h>
++#include <stdio.h>
++#include <sys/mman.h>
++#include <sys/stat.h>        /* For mode constants */
++#include <fcntl.h>  
++#include <string.h>
+ 
+ #include "pocl_cache.h"
+ #include "pocl_file_util.h"
+@@ -137,6 +142,11 @@ pocl_basic_init_device_ops(struct pocl_device_ops *ops)
+   ops->map_image = pocl_basic_map_image;
+   ops->unmap_image = pocl_basic_unmap_image;
+   ops->fill_image = pocl_basic_fill_image;
++
++  ops->shm_create_obj = pocl_basic_shm_create_obj;
++  ops->shm_get_obj = pocl_basic_shm_get_obj;
++  ops->shm_release_obj = pocl_basic_shm_release_obj;
++  ops->shm_free = pocl_basic_shm_free;
+ }
+ 
+ char *
+@@ -839,3 +849,133 @@ pocl_basic_svm_fill (cl_device_id dev, void *__restrict__ svm_ptr, size_t size,
+   temp.mem_ptr = svm_ptr;
+   pocl_driver_memfill (dev->data, &temp, NULL, size, 0, pattern, pattern_size);
+ }
++
++int
++pocl_basic_shm_create_obj(cl_device_id device, cl_mem mem, cl_shm_hdl hdl)
++{
++  POCL_MSG_PRINT_GENERAL("Starting shm create object on basic device.\n");
++  int errcode;
++  pocl_mem_identifier *p = &mem->device_ptrs[device->global_mem_id];
++
++  /* let other drivers preallocate */
++  if ((mem->flags & CL_MEM_ALLOC_HOST_PTR) && (mem->mem_host_ptr == NULL))
++    return CL_MEM_OBJECT_ALLOCATION_FAILURE;
++
++  /* malloc shared mem_host_ptr then increase refcount */
++  if (mem->mem_host_ptr == NULL)
++    {
++      int offset = strlen(P_tmpdir);
++      char* s = tmpnam(NULL);
++      memcpy(hdl->device_keys[device->dev_id].mem_name, s + offset, L_tmpnam + 1);
++      POCL_MSG_PRINT_GENERAL("Successfully generated temporary key: %s.\n", hdl->device_keys[device->dev_id].mem_name);
++      int fd = shm_open(hdl->device_keys[device->dev_id].mem_name, O_RDWR | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR);
++      if(fd < 0)
++          perror("Unable to opem shared mem object.");
++      POCL_GOTO_ERROR_COND((fd<0), CL_MEM_OBJECT_ALLOCATION_FAILURE);
++      errcode = ftruncate(fd, hdl->size);
++      POCL_GOTO_ERROR_COND(errcode, CL_MEM_OBJECT_ALLOCATION_FAILURE);
++       
++      mem->mem_host_ptr = mmap(NULL, hdl->size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
++      if(mem->mem_host_ptr == NULL)
++        return CL_MEM_OBJECT_ALLOCATION_FAILURE;
++    
++      close(fd);
++
++      mem->mem_host_ptr_version = 0;
++      mem->mem_host_ptr_refcount = 0;
++
++      // Update shared handle so other processes know memory has been allocated on device
++      hdl->device_keys[device->dev_id].available = 1;
++    }
++  ++mem->mem_host_ptr_refcount;
++
++  cl_device_id svm_dev = mem->context->svm_allocdev;
++  /* if we have a device which shares global memory with host,
++   * and it needs to do anything to make allocations accessible
++   * to itself, do it here */
++  if (svm_dev && svm_dev->global_mem_id == 0 && svm_dev->ops->svm_register)
++    svm_dev->ops->svm_register (svm_dev, mem->mem_host_ptr, mem->size);
++
++  p->version = mem->mem_host_ptr_version;
++  p->mem_ptr = mem->mem_host_ptr;
++
++  POCL_MSG_PRINT_MEMORY ("Basic device ALLOC %p / size %zu \n", p->mem_ptr,
++                         mem->size);
++
++  return CL_SUCCESS;
++
++ERROR:
++  return errcode;
++}
++
++int
++pocl_basic_shm_get_obj(cl_device_id device, cl_mem mem, cl_shm_hdl hdl)
++{
++  POCL_MSG_PRINT_GENERAL("Starting shm create object on basic device.\n");
++  int errcode;
++  pocl_mem_identifier *p = &mem->device_ptrs[device->global_mem_id];
++
++  /* let other drivers preallocate */
++  if ((mem->flags & CL_MEM_ALLOC_HOST_PTR) && (mem->mem_host_ptr == NULL))
++    return CL_MEM_OBJECT_ALLOCATION_FAILURE;
++
++  /* malloc shared mem_host_ptr then increase refcount */
++  if (mem->mem_host_ptr == NULL)
++    {
++      int fd = shm_open(hdl->device_keys[device->dev_id].mem_name, O_RDWR, S_IRUSR | S_IWUSR);
++      if (fd < 0){
++        perror("Error opening device shared memory");
++        return CL_MEM_OBJECT_ALLOCATION_FAILURE;
++      }
++       
++      mem->mem_host_ptr = mmap(NULL, hdl->size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
++      if(mem->mem_host_ptr == NULL)
++        return CL_MEM_OBJECT_ALLOCATION_FAILURE;
++    
++      close(fd);
++
++      mem->mem_host_ptr_version = 0;
++      mem->mem_host_ptr_refcount = 0;
++    }
++  ++mem->mem_host_ptr_refcount;
++
++  cl_device_id svm_dev = mem->context->svm_allocdev;
++  /* if we have a device which shares global memory with host,
++   * and it needs to do anything to make allocations accessible
++   * to itself, do it here */
++  if (svm_dev && svm_dev->global_mem_id == 0 && svm_dev->ops->svm_register)
++    svm_dev->ops->svm_register (svm_dev, mem->mem_host_ptr, mem->size);
++
++  p->version = mem->mem_host_ptr_version;
++  p->mem_ptr = mem->mem_host_ptr;
++
++  POCL_MSG_PRINT_MEMORY ("Basic device ALLOC %p / size %zu \n", p->mem_ptr,
++                         mem->size);
++
++  return CL_SUCCESS;
++}
++
++void pocl_basic_shm_release_obj (cl_device_id device, cl_mem mem, cl_shm_hdl hdl)
++{
++  cl_device_id svm_dev = mem->context->svm_allocdev;
++  if (svm_dev && svm_dev->global_mem_id == 0 && svm_dev->ops->svm_unregister)
++    svm_dev->ops->svm_unregister (svm_dev, mem->mem_host_ptr, mem->size);
++
++  pocl_mem_identifier *p = &mem->device_ptrs[device->global_mem_id];
++  assert (mem->mem_host_ptr_refcount > 0);
++  --mem->mem_host_ptr_refcount;
++  if (mem->mem_host_ptr_refcount == 0 && mem->mem_host_ptr != NULL)
++    {
++      munmap(mem->mem_host_ptr, mem->size);
++      mem->mem_host_ptr = NULL;
++      mem->mem_host_ptr_version = 0;
++    }
++  p->mem_ptr = NULL;
++  p->version = 0;
++}
++
++cl_int pocl_basic_shm_free(cl_device_id device, cl_shm_hdl hdl)
++{
++  shm_unlink(hdl->device_keys[device->dev_id].mem_name);
++  return 0;
++}
+diff --git a/lib/CL/devices/cuda/CMakeLists.txt b/lib/CL/devices/cuda/CMakeLists.txt
+index 40068bd0..81c719fe 100644
+--- a/lib/CL/devices/cuda/CMakeLists.txt
++++ b/lib/CL/devices/cuda/CMakeLists.txt
+@@ -31,6 +31,7 @@ include_directories(${LLVM_INCLUDE_DIRS} ${CUDA_INCLUDE_DIRS} ${CMAKE_CURRENT_SO
+ 
+ add_pocl_device_library("pocl-devices-cuda" pocl-cuda.c pocl-cuda.h pocl-ptx-gen.cc pocl-ptx-gen.h)
+ target_compile_definitions("pocl-devices-cuda" PRIVATE "-DCUDA_TOOLKIT_ROOT_DIR=\"${CUDA_TOOLKIT_ROOT_DIR}\"")
++
+ if(ENABLE_LOADABLE_DRIVERS)
+   target_link_libraries(pocl-devices-cuda PRIVATE cuda)
+ endif()
+diff --git a/lib/CL/devices/cuda/pocl-cuda.c b/lib/CL/devices/cuda/pocl-cuda.c
+index f126873c..65c7522f 100644
+--- a/lib/CL/devices/cuda/pocl-cuda.c
++++ b/lib/CL/devices/cuda/pocl-cuda.c
+@@ -40,9 +40,10 @@
+ #include "pocl_util.h"
+ 
+ #include <string.h>
++#include <sys/types.h>
++#include <unistd.h>
+ 
+ #include <cuda.h>
+-#include <cuda_runtime.h>
+ 
+ typedef struct pocl_cuda_device_data_s
+ {
+@@ -214,7 +215,12 @@ pocl_cuda_init_device_ops (struct pocl_device_ops *ops)
+   ops->join = pocl_cuda_join;
+   ops->flush = pocl_cuda_flush;
+   ops->init_build = pocl_cuda_init_build;
+-  // TODO
++
++  ops->shm_create_obj = pocl_cuda_shm_create_obj;
++  ops->shm_get_obj = pocl_cuda_shm_get_obj;
++  ops->shm_release_obj = pocl_cuda_shm_release_obj;
++  ops->shm_free = pocl_cuda_shm_free;
++
+   ops->notify_event_finished = pocl_cuda_notify_event_finished;
+ 
+   ops->get_device_info_ext = pocl_cuda_handle_cl_nv_device_attribute_query;
+@@ -912,18 +918,37 @@ load_or_generate_kernel (cl_kernel kernel, cl_device_id device,
+   POCL_LOCK(ddata->compile_lock);
+ 
+   /* Generate the parallel bitcode file linked with the kernel library */
+-  int error = pocl_llvm_generate_workgroup_function (device_i, device, kernel,
+-                                                     command, specialized);
+-  if (error)
+-    {
+-      POCL_MSG_PRINT_GENERAL ("pocl_llvm_generate_workgroup_function() failed"
+-                              " for kernel %s\n", kernel->name);
+-      assert (error == 0);
+-    }
+-
++  char FinalBinaryPath[POCL_FILENAME_LENGTH];
++  pocl_cache_final_binary_path(FinalBinaryPath, kernel->program, device_i,
++                               kernel, command, specialized);
+   char bc_filename[POCL_FILENAME_LENGTH];
+   pocl_cache_work_group_function_path (bc_filename, kernel->program, device_i,
+                                        kernel, command, specialized);
++  if(!pocl_exists(bc_filename)){
++      void* Module = NULL;
++      int Error = pocl_llvm_generate_workgroup_function_nowrite(
++                    device_i, device, kernel, command, &Module, specialized);
++      if (Error)
++         assert(Error == 0);
++      Error = pocl_cache_write_kernel_parallel_bc(Module, kernel->program, device_i,
++                                              kernel, command, specialized);
++      if (Error) {
++         POCL_MSG_ERR("pocl_cache_write_kernel_parallel_bc() failed with %i\n", Error);
++         assert(Error == 0);
++      }
++  }
++  POCL_MSG_ERR("bitcode filename: %s, final binary filname %s.\n", bc_filename, FinalBinaryPath);
++
++//  int error = pocl_llvm_generate_workgroup_function (device_i, device, kernel,
++//                                                     command, specialized);
++  assert(pocl_exists(bc_filename));
++
++//  if (error)
++//    {
++//      POCL_MSG_PRINT_GENERAL ("pocl_llvm_generate_workgroup_function() failed"
++//                              " for kernel %s\n", kernel->name);
++//      assert (error == 0);
++//    }
+ 
+   char ptx_filename[POCL_FILENAME_LENGTH];
+   strcpy (ptx_filename, bc_filename);
+@@ -932,6 +957,7 @@ load_or_generate_kernel (cl_kernel kernel, cl_device_id device,
+   if (!pocl_exists (ptx_filename))
+     {
+       /* Generate PTX from LLVM bitcode */
++      assert(pocl_exists(bc_filename));
+       if (pocl_ptx_gen (bc_filename, ptx_filename, kernel->name,
+                         device->llvm_cpu,
+                         ((pocl_cuda_device_data_t *)device->data)->libdevice,
+@@ -1010,6 +1036,7 @@ pocl_cuda_submit_kernel (CUstream stream, _cl_command_node *cmd,
+   unsigned sharedMemOffsets[meta->num_args + meta->num_locals];
+   unsigned constantMemBytes = 0;
+   unsigned constantMemOffsets[meta->num_args];
++  void* bufferMemOffsets[meta->num_args];
+   unsigned globalOffsets[3];
+ 
+   /* Get handle to constant memory buffer */
+@@ -1079,8 +1106,8 @@ pocl_cuda_submit_kernel (CUstream stream, _cl_command_node *cmd,
+                 if (arguments[i].value)
+                   {
+                     cl_mem mem = *(void **)arguments[i].value;
+-                    params[i] = &mem->device_ptrs[device->global_mem_id].mem_ptr
+-                                + arguments[i].offset;
++                    bufferMemOffsets[i] = (mem->device_ptrs[device->dev_id].mem_ptr + arguments[i].offset);
++                    params[i] = bufferMemOffsets + i;
+ 
+ #if defined __arm__
+                     /* On ARM with USE_HOST_PTR, perform explicit copy to
+@@ -1736,3 +1763,172 @@ char* pocl_cuda_init_build(void *data)
+     return strdup("-mllvm --nvptx-short-ptr");
+ #endif
+ }
++
++int
++pocl_cuda_shm_create_obj(cl_device_id device, cl_mem mem_obj, cl_shm_hdl hdl)
++{
++  POCL_MSG_PRINT_GENERAL("CUDA Starting shm create object.\n");
++  cuCtxSetCurrent (((pocl_cuda_device_data_t *)device->data)->context);
++
++  CUresult result;
++  CUdeviceptr b = 0;
++  pocl_mem_identifier* p = &mem_obj->device_ptrs[device->global_mem_id];
++
++  POCL_MSG_PRINT_GENERAL("CUDA checking if memory has been allocated somewhere else.\n");   
++  /* If memory for this global memory is not yet allocated -> do it */
++  if (p->mem_ptr == NULL)
++    {
++      POCL_MSG_PRINT_GENERAL("CUDA allocating memory for device %d.\n", device->global_mem_id);
++      cl_mem_flags flags = mem_obj->flags;
++
++      if (flags & CL_MEM_ALLOC_HOST_PTR)
++        {
++          result = cuMemHostAlloc (&p->extra_ptr, mem_obj->size,
++                               CU_MEMHOSTREGISTER_DEVICEMAP);
++          CUDA_CHECK (result, "cuMemHostAlloc");
++          result = cuMemHostGetDevicePointer (&b, p->extra_ptr, 0);
++          CUDA_CHECK (result, "cuMemHostGetDevicePointer");
++          mem_obj->mem_host_ptr = p->extra_ptr;
++          mem_obj->mem_host_ptr_refcount = 1;
++          mem_obj->mem_host_ptr_version = 0;
++        }
++      else
++        {
++          POCL_MSG_PRINT_GENERAL("CUDA calling cuda malloc.\n");
++          result = cuMemAlloc (&b, mem_obj->size);
++          if (result != CUDA_SUCCESS)
++            {
++              const char *err;
++              cuGetErrorName (result, &err);
++              POCL_MSG_PRINT2 (CUDA, __FUNCTION__, __LINE__,
++                               "-> Failed to allocate memory: %s\n", err);
++              return CL_MEM_OBJECT_ALLOCATION_FAILURE;
++            }
++          p->extra_ptr = NULL;
++        }
++
++      if (flags & CL_MEM_COPY_HOST_PTR)
++        {
++          result = cuMemcpyHtoD (b, mem_obj->mem_host_ptr, mem_obj->size);
++          CUDA_CHECK (result, "cuMemcpyHtoD");
++
++          result = cuStreamSynchronize (0);
++          CUDA_CHECK (result, "cuStreamSynchronize");
++        }
++
++      mem_obj->device_ptrs[device->global_mem_id].mem_ptr = (void*)b;
++
++      result = cuIpcGetMemHandle(
++        &hdl->device_keys[device->global_mem_id].mem_handle, 
++        b );
++      CUDA_CHECK (result, "cuIpcGemMemHandle");
++
++      hdl->device_keys[device->global_mem_id].available = 1;
++      hdl->device_keys[device->global_mem_id].owning_process = getpid();
++      hdl->device_keys[device->global_mem_id].dev_ptr = b;
++      if(p->extra_ptr)
++        hdl->device_keys[device->global_mem_id].extra_ptr = p->extra_ptr;
++    }
++  POCL_MSG_PRINT_GENERAL("CUDA successfully allocated shared memory.\n");
++  return CL_SUCCESS;
++  
++}
++
++int
++pocl_cuda_shm_get_obj(cl_device_id device, cl_mem mem_obj, cl_shm_hdl hdl)
++{
++  POCL_MSG_PRINT_GENERAL("CUDA Opening previously allocated memory.\n");
++  cuCtxSetCurrent (((pocl_cuda_device_data_t *)device->data)->context);
++
++  CUresult result;
++  CUdeviceptr b = 0;
++  cl_mem_flags flags = mem_obj->flags;
++
++  /* If memory for this global memory is not yet allocated -> do it */
++  if (mem_obj->device_ptrs[device->global_mem_id].mem_ptr == NULL)
++    {
++      cl_mem_flags flags = mem_obj->flags;
++      POCL_MSG_PRINT_GENERAL("CUDA Trying to open memory handle.\n");
++      result = cuIpcOpenMemHandle(
++        &b, 
++        hdl->device_keys[device->global_mem_id].mem_handle,
++        CU_IPC_MEM_LAZY_ENABLE_PEER_ACCESS
++      );
++
++      if (result != CUDA_SUCCESS)
++        {
++          const char *err;
++          cuGetErrorName (result, &err);
++          POCL_MSG_PRINT2 (CUDA, __FUNCTION__, __LINE__,
++                            "-> Failed to allocate memory: %s\n", err);
++          return CL_MEM_OBJECT_ALLOCATION_FAILURE;
++        }
++      POCL_MSG_PRINT_GENERAL("CUDA opened memory handle.\n");
++
++      if (flags & CL_MEM_COPY_HOST_PTR)
++        {
++          result = cuMemcpyHtoD (b, mem_obj->mem_host_ptr, mem_obj->size);
++          CUDA_CHECK (result, "cuMemcpyHtoD");
++
++          result = cuStreamSynchronize (0);
++          CUDA_CHECK (result, "cuStreamSynchronize");
++        }
++
++      mem_obj->device_ptrs[device->global_mem_id].mem_ptr = (void*)b;
++    }
++
++  /* Copy allocated global mem info to devices own slot */
++  mem_obj->device_ptrs[device->dev_id]
++      = mem_obj->device_ptrs[device->global_mem_id];
++  hdl->device_keys[device->dev_id].mem_handle
++      = hdl->device_keys[device->global_mem_id].mem_handle;
++
++  return CL_SUCCESS;
++}
++
++void 
++pocl_cuda_shm_release_obj (cl_device_id device, cl_mem mem_obj, cl_shm_hdl hdl)
++{
++  cuCtxSetCurrent (((pocl_cuda_device_data_t *)device->data)->context);
++  if(device->global_mem_id != device->dev_id)
++    return;
++
++  pid_t process = getpid();
++
++  if(process != hdl->device_keys[device->dev_id].owning_process)
++    {
++      cuIpcCloseMemHandle((CUdeviceptr) mem_obj->device_ptrs[device->dev_id].mem_ptr);
++    }
++}
++
++cl_int
++pocl_cuda_shm_free(cl_device_id device, cl_shm_hdl hdl)
++{
++  if(hdl->device_keys[device->dev_id].owning_process != getpid())
++    {
++      POCL_MSG_ERR("Cannot free device memory allocated by another process.\n");
++      return 1;
++    }
++
++  cuCtxSetCurrent (((pocl_cuda_device_data_t *)device->data)->context);
++  if(hdl->device_keys[device->global_mem_id].available)
++    {
++      if(hdl->device_keys[device->global_mem_id].extra_ptr)
++        {
++          hdl->device_keys[device->global_mem_id].dev_ptr = 0;
++          cuMemFreeHost(hdl->device_keys[device->global_mem_id].extra_ptr);
++        }
++      else
++        {
++          cuMemFree(hdl->device_keys[device->global_mem_id].dev_ptr);
++          memset(&hdl->device_keys[device->global_mem_id].mem_handle, 0, sizeof(cl_shm_dev_key_t));
++        }
++    }
++
++  if(device->global_mem_id != device->dev_id)
++    {
++      memset(&hdl->device_keys[device->dev_id].mem_handle, 0, sizeof(cl_shm_dev_key_t));
++    }
++  
++  return 0;
++}
+diff --git a/lib/CL/devices/cuda/pocl-ptx-gen.cc b/lib/CL/devices/cuda/pocl-ptx-gen.cc
+index c42b68da..afb433cc 100644
+--- a/lib/CL/devices/cuda/pocl-ptx-gen.cc
++++ b/lib/CL/devices/cuda/pocl-ptx-gen.cc
+@@ -69,8 +69,10 @@ int pocl_ptx_gen(const char *BitcodeFilename, const char *PTXFilename,
+                  const char *KernelName, const char *Arch,
+                  const char *LibDevicePath, int HasOffsets) {
+   llvm::ErrorOr<std::unique_ptr<llvm::MemoryBuffer>> Buffer =
+-      llvm::MemoryBuffer::getFile(BitcodeFilename);
++      llvm::MemoryBuffer::getFile(BitcodeFilename, -1, true, true);
+   if (!Buffer) {
++    std::error_code ec = Buffer.getError();
++    POCL_MSG_ERR("[CUDA] llvm error: %s\n", ec.message().c_str());
+     POCL_MSG_ERR("[CUDA] ptx-gen: failed to open bitcode file\n");
+     return 1;
+   }
+diff --git a/lib/CL/devices/prototypes.inc b/lib/CL/devices/prototypes.inc
+index 5460a308..ec0278f0 100644
+--- a/lib/CL/devices/prototypes.inc
++++ b/lib/CL/devices/prototypes.inc
+@@ -176,4 +176,15 @@
+   void pocl_##__DRV__##_svm_register (cl_device_id dev, void *host_ptr, size_t size);      \
+   void pocl_##__DRV__##_svm_unregister (cl_device_id dev, void *host_ptr, size_t size);    \
+   void pocl_##__DRV__##_notify_cmdq_finished (cl_command_queue cq);           \
+-  void pocl_##__DRV__##_notify_event_finished (cl_event event);
++  void pocl_##__DRV__##_notify_event_finished (cl_event event);               \
++  cl_int pocl_##__DRV__##_supports_builtin_kernel (void *data,                \
++                                                   const char *kernel_name);  \
++  cl_int pocl_##__DRV__##_get_builtin_kernel_metadata (void *data,            \
++               const char *kernel_name, pocl_kernel_metadata_t *target);      \
++  cl_int pocl_##__DRV__##_shm_create_obj (cl_device_id dev, cl_mem mem,       \
++                                                        cl_shm_hdl hdl);      \
++  cl_int pocl_##__DRV__##_shm_get_obj (cl_device_id dev, cl_mem mem,          \
++                                                        cl_shm_hdl hdl);      \
++  void pocl_##__DRV__##_shm_release_obj (cl_device_id dev, cl_mem mem,        \
++                                                        cl_shm_hdl hdl);      \
++  cl_int pocl_##__DRV__##_shm_free (cl_device_id dev, cl_shm_hdl hdl);
+diff --git a/lib/CL/pocl_cl.h b/lib/CL/pocl_cl.h
+index 14635dff..5eaf2c42 100644
+--- a/lib/CL/pocl_cl.h
++++ b/lib/CL/pocl_cl.h
+@@ -29,6 +29,11 @@
+ 
+ #include <assert.h>
+ #include <stdio.h>
++#include <semaphore.h>
++
++#ifdef BUILD_CUDA
++#include <cuda.h>
++#endif //BUILD_CUDA
+ 
+ #ifdef HAVE_VALGRIND
+ #include <valgrind/helgrind.h>
+@@ -203,7 +208,7 @@ typedef pthread_t pocl_thread_t;
+     {                                                                         \
+       CHECK_VALIDITY_MARKERS;                                                 \
+       POCL_LOCK ((__OBJ__)->pocl_lock);                                       \
+-      assert ((__OBJ__)->pocl_refcount > 0);                                  \
++      assert ((__OBJ__)->pocl_refcount > 0);                                 \
+     }                                                                         \
+   while (0)
+ #define POCL_UNLOCK_OBJ(__OBJ__)                                              \
+@@ -224,6 +229,9 @@ typedef pthread_t pocl_thread_t;
+     }                                                                         \
+   while (0)
+ 
++#define POCL_RELEASE_OBJECT_UNLOCKED(__OBJ__, __NEW_REFCOUNT__)    \
++    __NEW_REFCOUNT__ = --((__OBJ__)->pocl_refcount)
++
+ #define POCL_RETAIN_OBJECT_UNLOCKED(__OBJ__)    \
+     ++((__OBJ__)->pocl_refcount)
+ 
+@@ -791,6 +799,11 @@ struct pocl_device_ops {
+                               size_t *local_x, size_t *local_y,
+                               size_t *local_z);
+ 
++  cl_int (*shm_create_obj) (cl_device_id dev, cl_mem mem, cl_shm_hdl hdl);
++  cl_int (*shm_get_obj) (cl_device_id dev, cl_mem mem, cl_shm_hdl hdl);
++  void   (*shm_release_obj) (cl_device_id dev, cl_mem mem, cl_shm_hdl hdl);
++  cl_int (*shm_free) (cl_device_id dev, cl_shm_hdl hdl);
++
+   cl_int (*get_device_info_ext) (cl_device_id dev, cl_device_info param_name,
+                                  size_t param_value_size, void * param_value,
+                                  size_t * param_value_size_ret);
+@@ -1485,6 +1498,51 @@ struct _cl_sampler {
+   void**              device_data;
+ };
+ 
++typedef struct _cl_shm_dev_key cl_shm_dev_key_t;
++struct _cl_shm_dev_key {
++  int pocl_refcount;
++  cl_bool available;
++  pid_t owning_process;
++  union {
++    char              mem_name[L_tmpnam + 1];
++  #ifdef BUILD_CUDA
++    struct {
++      CUipcMemHandle mem_handle;
++      CUdeviceptr dev_ptr; //Only valid on owning process
++    };
++  #endif  //BUILD_CUDA
++  void* extra_ptr;
++    
++  };
++};
++
++typedef struct _cl_shm_hdl cl_shm_hdl_t;
++struct _cl_shm_hdl {
++  POCL_ICD_OBJECT
++  POCL_OBJECT;
++  sem_t             lock;
++  size_t            size;
++  cl_uint           refs;
++  cl_int            flags;
++  char              name[CL_SHM_MAX_NAME_LEN];
++  int               shmfd;
++  cl_bool           initialized;
++  int               shared_mem_allocation_owner_id;
++
++  volatile cl_device_id owning_device;
++
++  /* implementation */
++  /* The device-specific pointers to the buffer for all
++     device ids the buffer was allocated to. This can be a
++     direct pointer to the memory of the buffer or a pointer to
++     a book keeping structure. This always contains
++     as many pointers as there are devices in the system, even
++     though the buffer was not allocated for all.
++     The location of the device's buffer ptr is determined by
++     the device's dev_id. */
++  cl_shm_dev_key_t  device_keys[];
++};
++
+ #define CL_FAILED (-1)
+ 
+ #ifndef __cplusplus
+diff --git a/lib/CL/pocl_intfn.h b/lib/CL/pocl_intfn.h
+index 4000040c..5f440b2d 100644
+--- a/lib/CL/pocl_intfn.h
++++ b/lib/CL/pocl_intfn.h
+@@ -139,6 +139,10 @@ POdeclsym(clGetGLTextureInfo)
+ POdeclsym(clEnqueueAcquireGLObjects)
+ POdeclsym(clEnqueueReleaseGLObjects)
+ POdeclsym(clGetGLContextInfoKHR)
++POdeclsym(clShmOpen)
++POdeclsym(clShmGet)
++POdeclsym(clShmRelease)
++POdeclsym(clShmClose)
+ POdeclsym(clSetContentSizeBufferPoCL)
+ 
+ #endif
+diff --git a/lib/CL/pocl_llvm_wg.cc b/lib/CL/pocl_llvm_wg.cc
+index 3648b4f1..09a4cd88 100644
+--- a/lib/CL/pocl_llvm_wg.cc
++++ b/lib/CL/pocl_llvm_wg.cc
+@@ -513,8 +513,10 @@ int pocl_llvm_generate_workgroup_function(unsigned DeviceI, cl_device_id Device,
+   pocl_cache_final_binary_path(FinalBinaryPath, Kernel->program, DeviceI,
+                                Kernel, Command, Specialize);
+ 
+-  if (pocl_exists(FinalBinaryPath))
++  if (pocl_exists(FinalBinaryPath)){
++    POCL_MSG_ERR("pocl_llvm_generate_workgroup_function has final binary path but no parallel_bc path.\n");
+     return CL_SUCCESS;
++  }
+ 
+   int Error = pocl_llvm_generate_workgroup_function_nowrite(
+       DeviceI, Device, Kernel, Command, &Module, Specialize);
+diff --git a/tests/runtime/CMakeLists.txt b/tests/runtime/CMakeLists.txt
+index d2b418c2..96905278 100644
+--- a/tests/runtime/CMakeLists.txt
++++ b/tests/runtime/CMakeLists.txt
+@@ -41,6 +41,7 @@ set(PROGRAMS_TO_BUILD test_clFinish test_clGetDeviceInfo test_clGetEventInfo
+   test_event_double_wait test_buffer_migration test_buffer_ping_pong
+   test_enqueue_kernel_from_binary test_user_event test_fill-buffer
+   test_clSetMemObjectDestructorCallback
++  test_clShmOpen
+   test_cl_pocl_content_size)
+ 
+ add_compile_options(${OPENCL_CFLAGS})
+@@ -112,6 +113,8 @@ add_test_pocl(NAME "runtime/test_buffer_ping_pong" COMMAND  "test_buffer_ping_po
+ 
+ add_test_pocl(NAME "runtime/clSetMemObjectDestructorCallback" COMMAND  "test_clSetMemObjectDestructorCallback")
+ 
++add_test_pocl(NAME "runtime/clShmOpen" COMMAND  "test_clShmOpen")
++
+ add_test_pocl(NAME "runtime/test_cl_pocl_content_size" COMMAND "test_cl_pocl_content_size")
+ 
+ set_tests_properties( "runtime/clGetDeviceInfo" "runtime/clEnqueueNativeKernel"
+diff --git a/tests/runtime/test_clShmOpen.c b/tests/runtime/test_clShmOpen.c
+new file mode 100644
+index 00000000..da670aac
+--- /dev/null
++++ b/tests/runtime/test_clShmOpen.c
+@@ -0,0 +1,134 @@
++#include <stdio.h>
++#include <stdlib.h>
++#include <string.h>
++#include <CL/cl.h>
++#include <inttypes.h>
++#include <sys/types.h>
++#include <sys/stat.h>
++#include <sys/wait.h>
++#include <fcntl.h>
++#include <unistd.h>
++#include <assert.h>
++
++#include "poclu.h"
++
++#define MAX_PLATFORMS 32
++#define MAX_DEVICES   32
++
++#define BUFFER_SIZE   64
++
++int main(void)
++{
++  cl_int err;
++  const char *krn_src;
++  cl_program empty, program;
++  cl_platform_id platform;
++  cl_uint nplatforms;
++  cl_device_id did;
++  cl_uint num_devices;
++  cl_context ctx;  
++  cl_command_queue queue;
++  cl_mem buffers[2];
++
++  printf("Starting clShmOpen Test.\n");
++  
++  pid_t c1 = fork();
++  if(c1  == 0){
++    sleep(1);
++    err = clGetPlatformIDs(1, &platform, &nplatforms);	
++    CHECK_OPENCL_ERROR_IN("clGetPlatformIDs");
++    if (!nplatforms)
++      return EXIT_FAILURE;
++  
++    err = clGetDeviceIDs(platform, CL_DEVICE_TYPE_GPU, 1,
++                       &did, &num_devices);  
++    CHECK_OPENCL_ERROR_IN("clGetDeviceIDs");
++
++    ctx = clCreateContext(NULL, 1, &did, NULL, 
++                                       NULL, &err);
++    CHECK_OPENCL_ERROR_IN("clCreateContext");
++
++    err = clGetContextInfo(ctx, CL_CONTEXT_DEVICES,
++                         sizeof(cl_device_id), &did, NULL);
++    CHECK_OPENCL_ERROR_IN("clGetContextInfo");
++
++    queue = clCreateCommandQueue(ctx, did, 0, &err);
++    CHECK_OPENCL_ERROR_IN("clCreateCommandQueue");
++  
++    TEST_ASSERT( ctx );
++    TEST_ASSERT( did );
++    TEST_ASSERT( queue );
++
++    cl_shm_hdl hdl = clShmOpen("sharedmem_test", BUFFER_SIZE * sizeof(uint64_t), 0, &err);
++    CHECK_OPENCL_ERROR_IN("clShmOpen");
++ 
++    buffers[0] = clShmGet(ctx, hdl, 0, NULL, &err);
++    CHECK_OPENCL_ERROR_IN("clShmGet");
++
++    uint64_t test_buffer[BUFFER_SIZE];
++    err = clEnqueueReadBuffer(queue, buffers[0], CL_TRUE, 0, BUFFER_SIZE * sizeof(uint64_t), test_buffer, 0, NULL, NULL);
++    CHECK_OPENCL_ERROR_IN("clEnqueueReadBuffer");
++    assert(test_buffer[BUFFER_SIZE-1] = 1);
++
++    err = clShmRelease(buffers[0], hdl, 0);
++    CHECK_OPENCL_ERROR_IN("clShmRelease");
++
++    err = clShmClose(hdl);
++    CHECK_OPENCL_ERROR_IN("clShmClose");
++    return 0;
++  }
++  
++  pid_t c2 = fork();
++  if(c2 == 0){
++    err = clGetPlatformIDs(1, &platform, &nplatforms);
++    CHECK_OPENCL_ERROR_IN("clGetPlatformIDs");
++    if (!nplatforms)
++      return EXIT_FAILURE;
++
++    err = clGetDeviceIDs(platform, CL_DEVICE_TYPE_GPU, 1,
++                       &did, &num_devices);
++    CHECK_OPENCL_ERROR_IN("clGetDeviceIDs");
++
++    ctx = clCreateContext(NULL, 1, &did, NULL,
++                                       NULL, &err);
++    CHECK_OPENCL_ERROR_IN("clCreateContext");
++
++    err = clGetContextInfo(ctx, CL_CONTEXT_DEVICES,
++                         sizeof(cl_device_id), &did, NULL);
++    CHECK_OPENCL_ERROR_IN("clGetContextInfo");
++
++    queue = clCreateCommandQueue(ctx, did, 0, &err);
++    CHECK_OPENCL_ERROR_IN("clCreateCommandQueue");
++
++    TEST_ASSERT( ctx );
++    TEST_ASSERT( did );
++    TEST_ASSERT( queue );
++     
++    cl_shm_hdl hdl = clShmOpen("sharedmem_test", BUFFER_SIZE * sizeof(uint64_t), O_CREAT | O_TRUNC, &err);
++    CHECK_OPENCL_ERROR_IN("clShmOpen");
++
++    buffers[0] = clShmGet(ctx, hdl, CL_MEM_READ_WRITE, NULL, &err);
++    CHECK_OPENCL_ERROR_IN("clShmGet");
++ 
++    uint64_t test_buffer[BUFFER_SIZE];
++    test_buffer[BUFFER_SIZE-1] = 1; 
++    err = clEnqueueWriteBuffer(queue, buffers[0], CL_TRUE, 0, BUFFER_SIZE * sizeof(uint64_t), test_buffer, 0, NULL, NULL);
++    CHECK_OPENCL_ERROR_IN("clEnqueueWriteBuffer");
++
++    err = clShmRelease(buffers[0], hdl, 0);
++    CHECK_OPENCL_ERROR_IN("clShmRelease");
++    
++    sleep(5);
++
++    err = clShmClose(hdl);
++    CHECK_OPENCL_ERROR_IN("clShmClose");
++    return 0;
++  }
++  
++  int status;
++  waitpid(c2, &status, 0);
++  fprintf(stderr, "Child 2 exited.\n");
++  waitpid(c1, &status, 0);
++  fprintf(stderr, "Child 1 exited.\n");
++  return 0;
++}

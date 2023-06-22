@@ -11,7 +11,9 @@
 #define INPUT_VALUE  1
 #define OUTPUT_VALUE 2
 
-#define VERBOSE
+//#define VERBOSE
+
+
 int verify_result(unsigned int* ref, size_t n)
 {
 	int ret = 0;
@@ -53,8 +55,12 @@ int ocl_add(unsigned int* a, unsigned int* b, size_t n, unsigned int* out)
 	size_t           local_item_size  = OCL_LOCAL_SIZE;
 	size_t           kgroup;
 	struct timespec  start, end;
+        char             src_path[1024];
 
-	if(mcl_load("./vadd.cl", &src_code)){
+        strcpy(src_path, XSTR(_MCL_TEST_PATH));
+        strcat(src_path, "/vadd.cl");
+
+	if(mcl_load(src_path, &src_code)){
 		printf("Error loading OpenCL kernel! Aborting.\n");
 		goto err;
 	}
@@ -191,6 +197,12 @@ int mcl_add(unsigned int* a, unsigned int* b, size_t size, unsigned int* out)
 	mcl_handle*     hdl;
 	struct timespec start, end;
 	uint64_t        pes[MCL_DEV_DIMS] = {size,1,1};
+        char            src_path[1024];
+
+        strcpy(src_path, XSTR(_MCL_TEST_PATH));
+        strcat(src_path, "/vadd.cl");
+
+        mcl_prg_load(src_path, "", MCL_PRG_SRC);
 
 	hdl = mcl_task_create();
 	if(!hdl){
@@ -198,7 +210,7 @@ int mcl_add(unsigned int* a, unsigned int* b, size_t size, unsigned int* out)
 		goto err;
 	}
 	
-	if(mcl_task_set_kernel(hdl, "vadd.cl", "VADD", 3, "", 0x0)){
+	if(mcl_task_set_kernel(hdl, "VADD", 3)){
 		printf("Error setting %s kernel. Aborting.", "VADD");
 		goto err_hdl;
 	}

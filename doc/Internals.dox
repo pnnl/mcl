@@ -1,0 +1,23 @@
+/**
+@page Internals MCL Internals Guide
+[TOC]
+
+This page serves as a walk through of the internal components that make up the MCL Library and scheduler.
+
+@section Library MCL Library
+
+@subsection Programs Program
+@subsection Rdata Resident Data
+@subsection SharedMem Shared Memory
+
+@section Sched MCL Scheduler
+
+@subsection SelectionPolicy Selection Policy
+@subsubsection FFFS FFFS Policy
+
+@subsection ResourcePolicy Resource Policy
+@subsubsection HEFT HEFT Policy
+
+@subsection EvictionPolicy Eviction Policy
+
+**/

@@ -7,9 +7,13 @@
 #if _DEBUG
 #define Dprintf(fmt, args...) fprintf(stderr,"[MCL DEBUG][%s %d] " fmt "\n", __FILE__, __LINE__, ##args)
 #define dprintf(fmt, args...) fprintf(stderr,"" fmt, ##args)
+
+#include <execinfo.h>
+#define _abort() abort()
 #else
 #define Dprintf(fmt, args...)
 #define dprintf(fmt, args...)
+#define _abort() abort()       
 #endif
 
 #if defined (_DEBUG) && defined (VERBOSE)

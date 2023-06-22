@@ -1,0 +1,27 @@
+[package]
+name = "mcl_sched"
+version = "0.1.0-rc3"
+edition = "2021"
+authors = ["Ryan D. Friese <ryan.friese@pnnl.gov>"]
+description = "This crate provides and installable wrapper for the MCL (Minos Compute Library) Scheduler 'mcl_sched'"
+repository = "https://github.com/pnnl/mcl"
+license-file = "LICENSE"
+keywords = ["heterogeneous","gpu","fpga","hpc","runtime"]
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+libmcl-sys = {version = "0.1.2-rc3"}
+clap = {version = "4.0.29", features = ["derive"] }
+
+[features]
+pocl_extensions=["shared_mem", "libmcl-sys/pocl_extensions"]
+shared_mem=["libmcl-sys/shared_mem"]
+mcl_debug=["libmcl-sys/mcl_debug"]
+docs-rs = ["libmcl-sys/docs-rs"]
+
+[profile.release]
+opt-level=3
+lto=true
+codegen-units=1
+rpath = true

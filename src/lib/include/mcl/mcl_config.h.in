@@ -1,0 +1,8 @@
+/* Define to the version of this package. */
+#undef PACKAGE_VERSION
+
+/* Build shared memory. */
+#undef SHARED_MEM
+
+/* Use OpenCL extensions provided by pocl. */
+#undef USE_POCL_SHARED_MEM

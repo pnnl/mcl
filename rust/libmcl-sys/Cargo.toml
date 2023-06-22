@@ -1,6 +1,6 @@
 [package]
 name = "libmcl-sys"
-version = "0.1.1"
+version = "0.1.2-rc3"
 authors = ["Polykarpos Thomadakis <polykarpos.thomadakis@pnnl.gov>", "Ryan D. Friese <ryan.friese@pnnl.gov>", "Roberto Gioiosa <roberto.gioiosa@pnnl.gov>"]
 edition = "2021"
 description = "This system crate provides Rust language bindings to the Minos Compute Library (MCL)"
@@ -16,9 +16,22 @@ rand = "0.8.3"
 
 [build-dependencies]
 bindgen = "0.59.2"
+autotools = "0.2.6"
+cc = "1.0.77"
+glob = "0.3.1"
+#cmake = "0.1.49"
 
 [features]
+pocl_extensions = ["shared_mem"]
+shared_mem = []
+mcl_debug = []
 docs-rs = []
 
+[profile.release]
+opt-level=3
+lto=true
+codegen-units=1
+rpath = true
+
 [package.metadata.docs.rs]
-features = [ "docs-rs" ] # This feature will be enabled during the docs.rs build
+features = [ "docs-rs", "shared_mem" ] # This feature will be enabled during the docs.rs build
