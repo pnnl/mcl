@@ -3,13 +3,13 @@ use rand::Rng;
 use std::ffi::{c_void, CString};
 use std::mem::size_of;
 
-fn add_seq(x: &Vec<i32>, y: &Vec<i32>, z: &mut Vec<i32>) {
+fn add_seq(x: &Vec<u64>, y: &Vec<u64>, z: &mut Vec<u64>) {
     for i in 0..z.len() {
         z[i] = x[i] + y[i];
     }
 }
 
-fn add_mcl(x: &mut Vec<i32>, y: &mut Vec<i32>, z: &mut Vec<i32>, reps: usize, sync: &bool) {
+fn add_mcl(x: &mut Vec<u64>, y: &mut Vec<u64>, z: &mut Vec<u64>, reps: usize, sync: &bool) {
     let mut hdls: Vec<*mut mcl_handle> = Vec::new();
     unsafe {
         for i in 0..reps {
@@ -37,7 +37,7 @@ fn add_mcl(x: &mut Vec<i32>, y: &mut Vec<i32>, z: &mut Vec<i32>, reps: usize, sy
                     hdls[i],
                     0,
                     x_ptr,
-                    size * size_of::<i32>() as u64,
+                    size * size_of::<u64>() as u64,
                     (MCL_ARG_BUFFER | MCL_ARG_INPUT).into()
                 ),
                 0
@@ -47,7 +47,7 @@ fn add_mcl(x: &mut Vec<i32>, y: &mut Vec<i32>, z: &mut Vec<i32>, reps: usize, sy
                     hdls[i],
                     1,
                     y_ptr,
-                    size * size_of::<i32>() as u64,
+                    size * size_of::<u64>() as u64,
                     (MCL_ARG_BUFFER | MCL_ARG_INPUT).into()
                 ),
                 0
@@ -57,12 +57,12 @@ fn add_mcl(x: &mut Vec<i32>, y: &mut Vec<i32>, z: &mut Vec<i32>, reps: usize, sy
                     hdls[i],
                     2,
                     z_ptr,
-                    size * size_of::<i32>() as u64,
+                    size * size_of::<u64>() as u64,
                     (MCL_ARG_BUFFER | MCL_ARG_OUTPUT).into()
                 ),
                 0
             );
-            assert_eq!(mcl_exec(hdls[i], pes_ptr, les_ptr, MCL_TASK_GPU.into()), 0);
+            assert_eq!(mcl_exec(hdls[i], pes_ptr, les_ptr, MCL_TASK_ANY.into()), 0);
 
             if *sync {
                 assert_eq!(mcl_wait(hdls[i]), 0);
@@ -92,12 +92,12 @@ fn vadd() {
         let mut rng = rand::thread_rng();
 
         // Generate x and y arrays of size vec_size and initialize with random numbers in [0, 100)
-        let mut x: Vec<i32> = (0..vec_size).map(|_| rng.gen_range(0..100)).collect();
-        let mut y: Vec<i32> = (0..vec_size).map(|_| rng.gen_range(0..100)).collect();
+        let mut x: Vec<u64> = (0..vec_size).map(|_| rng.gen_range(0..100)).collect();
+        let mut y: Vec<u64> = (0..vec_size).map(|_| rng.gen_range(0..100)).collect();
 
         // Allocate the z vectors that will hold the results.
-        let mut z: Vec<i32> = vec![0; vec_size];
-        let mut z_seq: Vec<i32> = vec![0; vec_size];
+        let mut z: Vec<u64> = vec![0; vec_size];
+        let mut z_seq: Vec<u64> = vec![0; vec_size];
 
         add_seq(&x, &y, &mut z_seq);
 

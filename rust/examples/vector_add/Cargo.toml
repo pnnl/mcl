@@ -10,7 +10,7 @@ license-file = "LICENSE"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-mcl-rs = {version = "0.2.0-rc2" }
+mcl-rs = {version = "0.2.0" }
 futures = "0.3.6"
 
 [[bin]]

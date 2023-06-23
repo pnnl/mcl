@@ -1,6 +1,6 @@
 [package]
 name = "mcl-rs"
-version = "0.2.0-rc3"
+version = "0.2.0"
 authors = ["Polykarpos Thomadakis <polykarpos.thomadakis@pnnl.gov>", "Ryan D. Friese <ryan.friese@pnnl.gov>"]
 edition = "2021"
 description = "This system crate provides high-level rust language bindings to the Minos Compute Library (MCL)"
@@ -19,7 +19,7 @@ rustfft = "6.1.0"
 fork = "0.1.20"
 
 [dependencies]
-libmcl-sys = {version = "0.1.2-rc3"}
+libmcl-sys = {version = "0.1.2"}
 paste = "1.0"
 serde={version = "1.0.126", features = ["derive"] }
 async-std = {version = "0.99.3", features = ["unstable"]}

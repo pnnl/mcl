@@ -83,7 +83,7 @@ fn gemm_mcl(
                 ),
                 0
             );
-            assert_eq!(mcl_exec(hdls[i], pes_ptr, les_ptr, MCL_TASK_GPU.into()), 0);
+            assert_eq!(mcl_exec(hdls[i], pes_ptr, les_ptr, MCL_TASK_ANY.into()), 0);
 
             if *sync {
                 assert_eq!(mcl_wait(hdls[i]), 0);
