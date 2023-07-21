@@ -247,6 +247,7 @@ static inline mcl_pobj *__build_program(mcl_program *p, unsigned int n) {
             obj->cl_prg = clCreateProgramWithIL(clctx, (const void *)p->src, p->src_len, &ret);
             break;
 #endif
+        case MCL_PRG_VX_BIN:
         case MCL_PRG_BIN:
             obj->cl_prg = clCreateProgramWithBinary(clctx, 1, &dev, (const size_t *)&(p->src_len),
                                                     (const unsigned char **)&(p->src), NULL, &ret);
@@ -323,7 +324,11 @@ int __set_prg(char *path, char *copts, unsigned long flags) {
         break;
     }
     case MCL_PRG_BIN: {
-        archs = MCL_TASK_FPGA | MCL_TASK_VX;
+        archs = MCL_TASK_FPGA;
+        break;
+    }
+    case MCL_PRG_VX_BIN: {
+        archs = MCL_TASK_VX;
         break;
     }
     case MCL_PRG_GRAPH: {
@@ -336,8 +341,8 @@ int __set_prg(char *path, char *copts, unsigned long flags) {
         break;
     }
     case MCL_PRG_BUILTIN: {
-	archs = MCL_TASK_PROTEUS;
-	break;
+        archs = MCL_TASK_PROTEUS;
+        break;
     }
     default: {
         eprintf("Support for type of program 0x%lx missing.", flags);
