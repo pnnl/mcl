@@ -259,15 +259,14 @@ int resource_discover(cl_platform_id **ids, mcl_platform_t **plt,
                 dev->pes = __get_pes(dev);
                 dev->max_kernels = MCL_DEV_MKERNELS_CPU;
                 break;
+            case CL_DEVICE_TYPE_VX:
+                dev->type = MCL_TASK_VX;
+                dev->max_kernels = MCL_DEV_MKERNELS_VX;
+                dev->pes = __get_pes(dev);
+                break;
             case CL_DEVICE_TYPE_GPU:
-                if(strstr(dev->name, "vortex") != NULL) {
-                    dev->type = MCL_TASK_VX;
-                    dev->max_kernels = MCL_DEV_MKERNELS_VX;
-                }
-                else {
-                    dev->type = MCL_TASK_GPU;
-                    dev->max_kernels = MCL_DEV_MKERNELS_GPU;
-                } 
+                dev->type = MCL_TASK_GPU;
+                dev->max_kernels = MCL_DEV_MKERNELS_GPU;
                 dev->pes = __get_pes(dev);
                 break;
             case CL_DEVICE_TYPE_ACCELERATOR:
@@ -276,16 +275,16 @@ int resource_discover(cl_platform_id **ids, mcl_platform_t **plt,
                 dev->max_kernels = MCL_DEV_MKERNELS_FPGA;
                 break;
             case CL_DEVICE_TYPE_CUSTOM:
-		if (strstr(dev->name, "PROTEUS") != NULL) {
-			dev->type = MCL_TASK_PROTEUS;
-			dev->max_kernels = MCL_DEV_MKERNELS_PROTEUS;	
-		}
-        else {
-			dev->type = MCL_TASK_DF;
-			dev->max_kernels = MCL_DEV_MKERNELS_DF;
-		}
-		dev->pes = __get_pes(dev);
-		break;  
+                if (strstr(dev->name, "PROTEUS") != NULL) {
+                    dev->type = MCL_TASK_PROTEUS;
+                    dev->max_kernels = MCL_DEV_MKERNELS_PROTEUS;	
+                }
+                else {
+                    dev->type = MCL_TASK_DF;
+                    dev->max_kernels = MCL_DEV_MKERNELS_DF;
+                }
+                dev->pes = __get_pes(dev);
+                break;  
             }
 
             Dprintf("    Platform %" PRIu64 " Device %" PRIu64 ": Name: %s Type: 0x%" PRIx64 " PEs: %" PRIu64 " GlobalMemory: %f MB",
