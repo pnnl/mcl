@@ -116,6 +116,7 @@
 #define MCL_DEV_MUL_GPU 512
 #define MCL_DEV_MUL_FPGA 1
 #define MCL_DEV_MUL_DF 1
+#define MCL_DEV_MUL_VX 1
 
 // These should be adjusted based on specific device but I am not sure how to get that now
 #define MCL_DEV_MKERNELS_GPU 64 // CUDA compute capability 6.0 and 7.0
@@ -123,6 +124,7 @@
 #define MCL_DEV_MKERNELS_FPGA 4
 #define MCL_DEV_MKERNELS_DF 4
 #define MCL_DEV_MKERNELS_PROTEUS 64
+#define MCL_DEV_MKERNELS_VX 4
 
 #define MCL_DEV_MEM_SAFTEY_FACTOR 0.05
 #define MCL_TASK_OVERHEAD 0.1

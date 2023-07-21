@@ -910,10 +910,10 @@ static inline int __task_setup_buffers(mcl_request *r)
 					 *       computations to handle sizes that are not multiple of
 					 *       pattern size.
 					 */
-                                        uint32_t __zero_pattern = 0u;
-                                        Dprintf("\t\t Zeroing the buffer...");
-                                        ret = clEnqueueFillBuffer(queue, context->buffers[i], &__zero_pattern,
-                                                                  1, 0, a->size, 0, NULL, NULL);
+                                        // uint32_t __zero_pattern = 0u;
+                                        // Dprintf("\t\t Zeroing the buffer...");
+                                        // ret = clEnqueueFillBuffer(queue, context->buffers[i], &__zero_pattern,
+                                        //                           1, 0, a->size, 0, NULL, NULL);
                                 }
 
                                 if (ret != CL_SUCCESS){

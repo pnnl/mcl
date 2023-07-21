@@ -125,8 +125,15 @@ static int hybrid_find_resource(sched_req_t *r) {
         case MCL_TASK_FPGA:
             mult = MCL_DEV_MUL_FPGA;
             break;
-        case MCL_TASK_DF:
-            mult = MCL_DEV_MUL_DF;
+        default:
+            // case MCL_TASK_VX:
+            if(strstr(res[i].dev->name, "vortex") != NULL) {
+                mult = MCL_DEV_MUL_VX;
+            }
+            // case MCL_TASK_DF:
+            else {
+                mult = MCL_DEV_MUL_DF;
+            }
             break;
         }
 
