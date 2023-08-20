@@ -90,7 +90,6 @@ extern "C"
 #define MCL_PRG_BIN 0x08
 #define MCL_PRG_GRAPH 0x10
 #define MCL_PRG_BUILTIN 0x20
-#define MCL_PRG_VX_BIN 0x40
 #define MCL_PRG_MASK 0xff
 /**@}*/
  

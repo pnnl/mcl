@@ -247,7 +247,6 @@ static inline mcl_pobj *__build_program(mcl_program *p, unsigned int n) {
             obj->cl_prg = clCreateProgramWithIL(clctx, (const void *)p->src, p->src_len, &ret);
             break;
 #endif
-        case MCL_PRG_VX_BIN:
         case MCL_PRG_BIN:
             obj->cl_prg = clCreateProgramWithBinary(clctx, 1, &dev, (const size_t *)&(p->src_len),
                                                     (const unsigned char **)&(p->src), NULL, &ret);
@@ -306,6 +305,42 @@ err:
     return NULL;
 }
 
+int is_vx_bin(char* path)
+{
+    int ret = 0;
+    FILE* f = fopen(path, "r");
+    fseek(f, 0, SEEK_END);
+    size_t size = ftell(f);
+    printf("Size read %zu\n", size);
+    fseek(f, 0, SEEK_SET);
+    char* read = (char*)malloc(size+1);
+    fread(read, 1, size, f);
+    fclose(f);
+    read[size] = '\0';
+    int ix = 0;
+    const char name[] = "vortexgpgpu";
+
+    for(size_t i = 0 ; i < size; i++)
+    {
+        if(ix == 9)
+        {
+            ret = 1;
+            break;
+        }
+        else if(read[i] == name[ix])
+        {
+            ix++;
+        }
+        else
+        {
+            ix = 0;
+        }
+    }
+
+    free(read);
+    return ret;
+}
+
 int __set_prg(char *path, char *copts, unsigned long flags) {
     int ret = 0;
     uint64_t archs = 0x0;
@@ -324,13 +359,17 @@ int __set_prg(char *path, char *copts, unsigned long flags) {
         break;
     }
     case MCL_PRG_BIN: {
-        archs = MCL_TASK_FPGA;
+        if(is_vx_bin(path))
+        {
+            archs = MCL_TASK_VX;
+        }
+        else
+        {
+            archs = MCL_TASK_FPGA;
+        }
         break;
     }
-    case MCL_PRG_VX_BIN: {
-        archs = MCL_TASK_VX;
-        break;
-    }
+
     case MCL_PRG_GRAPH: {
         archs = MCL_TASK_DF;
         char* targ = "-DMCL_CONFIG="; //we pass along the path of the config so that pocl can access during the "build/compile" of the "ocl" program
