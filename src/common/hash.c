@@ -27,6 +27,7 @@ mcl_request* req_del(mcl_request** table, uint32_t key)
 {
 	mcl_request*    req = NULL;
 
+	VDprintf("  removing request %u.",key);
 	pthread_rwlock_wrlock(&req_lock);
 	HASH_FIND_INT(*table, &key, req);
 	if(req)

@@ -143,7 +143,7 @@ int mcl_hdl_free(mcl_handle *h)
 {
     mcl_request *req;
 
-    // Dprintf("Removing handle %u...", h->rid);
+    Dprintf("Removing handle %u...", h->rid);
     if (!h)
     {
         eprintf("Invalid argument");
