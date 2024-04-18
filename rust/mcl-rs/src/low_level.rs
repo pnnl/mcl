@@ -3,6 +3,9 @@ use libmcl_sys::*;
 #[cfg(any(feature = "shared_mem", feature = "pocl_extensions"))]
 use std::ffi::c_char;
 use std::ffi::{c_void, CStr, CString};
+
+#[cfg(any(feature = "shared_mem", feature = "pocl_extensions"))]
+#[allow(depricated)]
 use std::os::unix::raw::pid_t;
 use std::ptr::null_mut;
 use std::slice;

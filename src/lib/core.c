@@ -251,6 +251,12 @@ static inline mcl_pobj *__build_program(mcl_program *p, unsigned int n) {
             obj->cl_prg = clCreateProgramWithBinary(clctx, 1, &dev, (const size_t *)&(p->src_len),
                                                     (const unsigned char **)&(p->src), NULL, &ret);
             break;
+        case MCL_PRG_GRAPH:
+            obj->cl_prg = clCreateProgramWithBuiltInKernels(clctx, 1, &dev, "dataflow", &ret);
+            break;
+	case MCL_PRG_BUILTIN:
+	    obj->cl_prg = clCreateProgramWithBuiltInKernels(clctx, 1, &dev, (const char *)(p->path), &ret);
+	    break;
         default:
             eprintf("Unsupported program type! (flags=0x%lx)", p->flags);
             goto err;
@@ -319,6 +325,19 @@ int __set_prg(char *path, char *copts, unsigned long flags) {
     case MCL_PRG_BIN: {
         archs = MCL_TASK_FPGA;
         break;
+    }
+    case MCL_PRG_GRAPH: {
+        archs = MCL_TASK_DF;
+        char* targ = "-DMCL_CONFIG="; //we pass along the path of the config so that pocl can access during the "build/compile" of the "ocl" program
+        copts = (char*) malloc(sizeof(char) * strlen(targ)+strlen(path)+1);
+        strcpy(copts,targ);
+        strcpy(copts+strlen(targ),path);
+        copts[ strlen(targ)+strlen(path)]='\0';
+        break;
+    }
+    case MCL_PRG_BUILTIN: {
+	archs = MCL_TASK_PROTEUS;
+	break;
     }
     default: {
         eprintf("Support for type of program 0x%lx missing.", flags);

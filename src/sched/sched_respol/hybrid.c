@@ -125,6 +125,9 @@ static int hybrid_find_resource(sched_req_t *r) {
         case MCL_TASK_FPGA:
             mult = MCL_DEV_MUL_FPGA;
             break;
+        case MCL_TASK_DF:
+            mult = MCL_DEV_MUL_DF;
+            break;
         }
 
         if (!(res[i].dev->type & r->type) || (res[i].pes_used > res[i].dev->pes * mult)) {

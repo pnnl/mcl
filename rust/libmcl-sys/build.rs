@@ -42,13 +42,14 @@ fn main() {
     };
 
     if ocl_incpath.is_empty() || ocl_libpath.is_empty() {
-        ocl_libpath.clear();
-        ocl_incpath.clear();
+       
         // Find path to CUDA library and include to extact OpenCL
         let output = Command::new("which").arg("nvcc").output();
         let out = String::from_utf8(output.unwrap().stdout).unwrap();
 
         if !out.is_empty() {
+            ocl_libpath.clear();
+            ocl_incpath.clear();
             let mut split = out.split("bin");
             ocl_libpath = split
                 .next()

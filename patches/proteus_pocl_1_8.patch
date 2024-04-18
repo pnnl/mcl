@@ -1,0 +1,3076 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 3da10e19..d6161f15 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -235,6 +235,8 @@ option(EXAMPLES_USE_GIT_MASTER "If enabled, some of the external testsuites in e
+ 
+ option(ENABLE_HOST_CPU_DEVICES "Add host CPUs as OpenCL devices (basic and pthread)." ON)
+ 
++option(ENABLE_PROTEUS "Enable the MCL simulated accelerator with fixed-functions." OFF)
++
+ option(ENABLE_HOST_CPU_DEVICE_CL20 "Enable reporting OpenCL 2.0 for the CPU device" OFF)
+ 
+ option(ENABLE_ACCEL_DEVICE "Enable the generic hardware accelerator device driver." OFF)
+@@ -1153,6 +1155,12 @@ if(DEFINED EXTRA_OCL_TARGETS)
+ endif()
+ 
+ 
++if(ENABLE_PROTEUS)
++  set(BUILD_BASIC 1)
++  set(BUILD_PROTEUS 1)
++  set(OCL_DRIVERS "${OCL_DRIVERS} proteus")
++endif()
++
+ ####################################################################
+ 
+ # Determine which device drivers to build.
+@@ -1689,6 +1697,7 @@ MESSAGE(STATUS "ENABLE_FP64: ${ENABLE_FP64}")
+ endif()
+ MESSAGE(STATUS "ENABLE_IPO: ${ENABLE_IPO}")
+ MESSAGE(STATUS "ENABLE_ICD: ${ENABLE_ICD}")
++MESSAGE(STATUS "ENABLE_PROTEUS: ${ENABLE_PROTEUS}")
+ MESSAGE(STATUS "ENABLE_TCE: ${ENABLE_TCE}")
+ MESSAGE(STATUS "ENABLE_TCEMC: ${ENABLE_TCEMC}")
+ MESSAGE(STATUS "ENABLE_HSA: ${ENABLE_HSA}")
+diff --git a/config.h.in.cmake b/config.h.in.cmake
+index fc1b5ae3..f016a081 100644
+--- a/config.h.in.cmake
++++ b/config.h.in.cmake
+@@ -4,6 +4,7 @@
+ #cmakedefine BUILD_BASIC
+ #cmakedefine BUILD_PTHREAD
+ #cmakedefine BUILD_ACCEL
++#cmakedefine BUILD_PROTEUS
+ 
+ #define BUILDDIR "@BUILDDIR@"
+ 
+diff --git a/lib/CL/devices/CMakeLists.txt b/lib/CL/devices/CMakeLists.txt
+index 4bd83985..6120fedf 100644
+--- a/lib/CL/devices/CMakeLists.txt
++++ b/lib/CL/devices/CMakeLists.txt
+@@ -60,6 +60,12 @@ if(BUILD_ACCEL)
+     "$<TARGET_OBJECTS:pocl-devices-accel>")
+ endif()
+ 
++if(BUILD_PROTEUS)
++  add_subdirectory("proteus")
++  set(POCL_DEVICES_OBJS "${POCL_DEVICES_OBJS}"
++    "$<TARGET_OBJECTS:pocl-devices-proteus>")
++endif()
++
+ # for these drivers, use HWLOC if found
+ if(ENABLE_HOST_CPU_DEVICES OR ENABLE_HSA)
+   add_subdirectory("topology")
+diff --git a/lib/CL/devices/devices.c b/lib/CL/devices/devices.c
+index 24857859..c94e6c65 100644
+--- a/lib/CL/devices/devices.c
++++ b/lib/CL/devices/devices.c
+@@ -74,11 +74,15 @@
+ #include "cuda/pocl-cuda.h"
+ #endif
+ 
+-#if defined(BUILD_ACCEL)
++#ifdef BUILD_ACCEL
+ #include "accel/accel.h"
+ #endif
+ 
+-#define MAX_DEV_NAME_LEN 64
++#ifdef BUILD_PROTEUS
++#include "proteus/proteus.h"
++#endif
++
++#define MAX_DEV_NAME_LEN 256
+ 
+ #ifndef PATH_MAX
+ #define PATH_MAX 4096
+@@ -124,6 +128,9 @@ static init_device_ops pocl_devices_init_ops[] = {
+ #ifdef BUILD_ACCEL
+   INIT_DEV (accel),
+ #endif
++#ifdef BUILD_PROTEUS
++  INIT_DEV (proteus),
++#endif
+ };
+ 
+ #define POCL_NUM_DEVICE_TYPES (sizeof(pocl_devices_init_ops) / sizeof((pocl_devices_init_ops)[0]))
+@@ -147,6 +154,9 @@ char pocl_device_types[POCL_NUM_DEVICE_TYPES][30] = {
+ #ifdef BUILD_ACCEL
+   "accel",
+ #endif
++#ifdef BUILD_PROTEUS
++  "proteus"
++#endif
+ };
+ 
+ static struct pocl_device_ops pocl_device_ops[POCL_NUM_DEVICE_TYPES];
+@@ -522,7 +532,7 @@ pocl_init_devices ()
+           strcat (init_device_ops_name, "pocl_");
+           strcat (init_device_ops_name, pocl_device_types[i]);
+           strcat (init_device_ops_name, "_init_device_ops");
+-          pocl_devices_init_ops[i] = (init_device_ops)dlsym (
++	   pocl_devices_init_ops[i] = (init_device_ops)dlsym (
+           pocl_device_handles[i], init_device_ops_name);
+           if (pocl_devices_init_ops[i] != NULL)
+             {
+diff --git a/lib/CL/devices/proteus/CMakeLists.txt b/lib/CL/devices/proteus/CMakeLists.txt
+new file mode 100644
+index 00000000..e8f5f131
+--- /dev/null
++++ b/lib/CL/devices/proteus/CMakeLists.txt
+@@ -0,0 +1,3 @@
++add_compile_options("-std=c++11")
++
++add_pocl_device_library(pocl-devices-proteus proteus.cc proteus_pthread_scheduler.c proteus_pthread_utils.c proteus.h)
+diff --git a/lib/CL/devices/proteus/pocl-proteus_pthread_scheduler.h b/lib/CL/devices/proteus/pocl-proteus_pthread_scheduler.h
+new file mode 100644
+index 00000000..cb86a7c5
+--- /dev/null
++++ b/lib/CL/devices/proteus/pocl-proteus_pthread_scheduler.h
+@@ -0,0 +1,60 @@
++// pocl-proteus-pthread_scheduler.h - kernel/workgroup scheduler for proteus-mt device.
++
++/*
++   Copyright (c) 2015 Ville Korhonen, Tampere University of Technology
++   
++   Permission is hereby granted, free of charge, to any person obtaining a copy
++   of this software and associated documentation files (the "Software"), to deal
++   in the Software without restriction, including without limitation the rights
++   to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
++   copies of the Software, and to permit persons to whom the Software is
++   furnished to do so, subject to the following conditions:
++   
++   The above copyright notice and this permission notice shall be included in
++   all copies or substantial portions of the Software.
++   
++   THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
++   IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
++   FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
++   AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
++   LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
++   OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
++   THE SOFTWARE.
++*/
++
++#include "pocl_cl.h"
++
++#ifndef POCL_PTHREAD_SCHEDULER_H
++#define POCL_PTHREAD_SCHEDULER_H
++
++#include "pocl-proteus_pthread_utils.h"
++#include "uthash.h"
++
++#ifdef __GNUC__
++#pragma GCC visibility push(hidden)
++#endif
++
++typedef struct pool_thread_data thread_data;
++
++typedef struct kernel_info_struct {
++  char* kernel_name;      // key
++  unsigned int latency;
++  unsigned int power;
++  unsigned int overhead;
++  
++  UT_hash_handle hh;     // makes hashable.
++} kernel_info;
++
++/* Initializes scheduler. Must be called before any kernel enqueue */
++void proteus_pthread_scheduler_init (cl_device_id device, kernel_info* info);
++
++void proteus_pthread_scheduler_uninit ();
++
++/* Gives ready-to-execute command for scheduler */
++void proteus_pthread_scheduler_push_command (_cl_command_node *cmd);
++
++#ifdef __GNUC__
++#pragma GCC visibility pop
++#endif
++
++#endif
+diff --git a/lib/CL/devices/proteus/pocl-proteus_pthread_utils.h b/lib/CL/devices/proteus/pocl-proteus_pthread_utils.h
+new file mode 100644
+index 00000000..bbed6849
+--- /dev/null
++++ b/lib/CL/devices/proteus/pocl-proteus_pthread_utils.h
+@@ -0,0 +1,95 @@
++// OpenCL proteus implementation: utils.
++/*
++   Copyright (c) 2011-2012 Universidad Rey Juan Carlos and
++                 2012-2018 Pekka Jääskeläinen / Tampere Univ. of Technology
++
++   Permission is hereby granted, free of charge, to any person obtaining a copy
++   of this software and associated documentation files (the "Software"), to deal
++   in the Software without restriction, including without limitation the rights
++   to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
++   copies of the Software, and to permit persons to whom the Software is
++   furnished to do so, subject to the following conditions:
++
++   The above copyright notice and this permission notice shall be included in
++   all copies or substantial portions of the Software.
++
++   THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
++   IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
++   FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
++   AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
++   LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
++   OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
++   THE SOFTWARE.
++*/
++
++#ifndef POCL_PTHREAD_UTILS_H
++#define POCL_PTHREAD_UTILS_H
++
++#include "pocl_cl.h"
++#include "pocl_util.h"
++#include "pocl_context.h"
++#include "pocl_workgroup_func.h"
++
++#ifdef __GNUC__
++#pragma GCC visibility push(hidden)
++#endif
++
++typedef struct kernel_run_command kernel_run_command;
++struct kernel_run_command
++{
++  void *data;
++  cl_kernel kernel;
++  cl_device_id device;
++  _cl_command_node *cmd;
++  pocl_workgroup_func workgroup;
++  struct pocl_argument *kernel_args;
++  kernel_run_command *prev;
++  kernel_run_command *next;
++  unsigned long ref_count;
++
++  /* delay for which to stall the CU/thread */
++  unsigned int latency;
++  
++  /* actual kernel arguments. these are setup once at the kernel setup
++   * phase, then each thread sets up the local arguments for itself. */
++  void **arguments;
++  /* this is required b/c there's an additional level of indirection */
++  void **arguments2;
++
++  POCL_FAST_LOCK_T lock __attribute__ ((aligned (HOST_CPU_CACHELINE_SIZE)));
++
++  size_t remaining_wgs __attribute__ ((aligned (HOST_CPU_CACHELINE_SIZE)));
++  size_t wgs_dealt;
++
++  struct pocl_context pc __attribute__ ((aligned (HOST_CPU_CACHELINE_SIZE)));
++
++} __attribute__ ((aligned (HOST_CPU_CACHELINE_SIZE)));
++
++#ifdef USE_POCL_MEMMANAGER
++void pocl_proteus_init_kernel_run_command_manager (void);
++void pocl_init_thread_argument_manager ();
++kernel_run_command* new_kernel_run_command ();
++void free_kernel_run_command (kernel_run_command *k);
++#else
++#define pocl_proteus_init_kernel_run_command_manager() NULL
++#define pocl_init_thread_argument_manager() NULL
++#define new_kernel_run_command()                                              \
++  (kernel_run_command *)pocl_aligned_malloc (HOST_CPU_CACHELINE_SIZE,         \
++                                             sizeof (kernel_run_command))
++#define free_kernel_run_command(k) free (k)
++#endif
++
++void setup_kernel_arg_array (kernel_run_command *k);
++void setup_kernel_arg_array_with_locals (void **arguments, void **arguments2,
++                                         kernel_run_command *k,
++                                         char *local_mem,
++                                         size_t local_mem_size);
++void free_kernel_arg_array (kernel_run_command *k);
++void free_kernel_arg_array_with_locals (void **arguments, void **arguments2,
++                                        kernel_run_command *k);
++
++#ifdef __GNUC__
++#pragma GCC visibility pop
++#endif
++
++#endif
+diff --git a/lib/CL/devices/proteus/proteus.cc b/lib/CL/devices/proteus/proteus.cc
+new file mode 100644
+index 00000000..62b71c59
+--- /dev/null
++++ b/lib/CL/devices/proteus/proteus.cc
+@@ -0,0 +1,825 @@
++#include "proteus.h"
++
++#include "pocl_device.h"
++#include "devices.h"
++#include "pocl_util.h"
++#include "pocl_cl.h"
++
++#include "bufalloc.h"
++
++#include <unistd.h>
++#include <stdio.h>
++#include <iostream>
++#include <fstream>
++#include <sstream>
++#include <vector>
++#include <unordered_map>
++#include <climits>
++
++#include <pthread.h>
++#include "uthash.h"
++
++#include <thread>         // std::this_thread::sleep_for
++#include <chrono>         // std::chrono::seconds::nanoseconds
++
++extern "C" {
++  #include "pocl-proteus_pthread_utils.h"
++  #include "pocl-proteus_pthread_scheduler.h"
++};
++
++/* hash-table with supported kernels */
++kernel_info* kernel_info_ds = NULL;
++static int scheduler_initialized = 0;
++
++struct Data {
++  /* Currently loaded kernel. */
++  cl_kernel current_kernel;
++  
++  /* kernel metadata - contains arg_info */
++  pocl_kernel_metadata_t * kernel_metadata;
++
++  /* dev specific data transfer info */
++  int dataTransfer_rate;  // in mega-bytes/sec
++  int fixed_dataTransfer_latency; // in nano-seconds
++  int fixed_kernel_launch; // in nano-seconds.
++};
++
++/**
++ * Per event data.
++ */
++struct event_data {
++  pthread_cond_t event_cond;
++};
++
++void pocl_proteus_init_device_ops(struct pocl_device_ops *ops) {
++
++  // IMP: match function signatures as defined in lib/CL/devices/prototypes.inc
++  ops->device_name = "proteus";
++  ops->init = pocl_proteus_init; 
++  ops->uninit = pocl_proteus_uninit; 
++  ops->reinit = pocl_proteus_reinit;
++  ops->probe = pocl_proteus_probe;  
++  ops->build_hash = pocl_proteus_build_hash;
++  
++  //ops->supports_builtin_kernel = pocl_proteus_supports_builtin_kernel; 
++  //ops->get_builtin_kernel_metadata = pocl_proteus_get_builtin_kernel_metadata; 
++  ops->setup_metadata = pocl_proteus_setup_metadata;
++  
++  ops->alloc_mem_obj = pocl_proteus_alloc_mem_obj; 
++  ops->free = pocl_proteus_free;
++  ops->map_mem = NULL; 
++
++  ops->submit = pocl_proteus_submit;
++  ops->join = pocl_proteus_join;
++  ops->flush = pocl_proteus_flush;
++
++  ops->write = pocl_proteus_write; 
++  ops->read = pocl_proteus_read;  
++
++  ops->notify = pocl_proteus_notify;
++
++  ops->broadcast = pocl_broadcast;  
++  ops->run = pocl_proteus_run;
++
++  ops->memfill = pocl_proteus_memfill;
++
++  ops->wait_event = pocl_proteus_wait_event;
++  ops->notify_event_finished = pocl_proteus_notify_event_finished;
++  ops->notify_cmdq_finished = pocl_proteus_notify_cmdq_finished;
++  ops->update_event = pocl_proteus_update_event;
++  ops->free_event_data = pocl_proteus_free_event_data;
++
++  ops->init_queue = pocl_proteus_init_queue;
++  ops->free_queue = pocl_proteus_free_queue;
++}
++
++// find how many proteus devices are made available by user.
++unsigned int pocl_proteus_probe(struct pocl_device_ops *ops)
++{
++  //POCL_MSG_PRINT_INFO ("proteus: probe.\n");
++  
++  int env_count = pocl_device_get_env_count(ops->device_name);
++
++  if (env_count < 0)
++    return 0;
++
++  return env_count;
++}
++
++// give a unique name to each instantiated device.
++char *pocl_proteus_build_hash(cl_device_id /*device*/) {
++  //POCL_MSG_PRINT_INFO ("proteus: build-hash.\n");
++
++  char *res = (char *) calloc(1000, sizeof(char));
++
++  snprintf(res, 1000, "proteus-%s", HOST_DEVICE_BUILD_HASH);
++  return res;
++}
++
++
++// copy kernel metadata
++// this is called for each kernel.
++cl_int pocl_proteus_get_builtin_kernel_metadata(void *data,
++                                              const char *kernel_name,
++                                              pocl_kernel_metadata_t *target) {
++  //POCL_MSG_PRINT_INFO ("proteus: kernel metadata for kernel named: %s.\n", kernel_name);
++
++  struct Data *D = (struct Data * ) data;
++  pocl_kernel_metadata_t* md = D->kernel_metadata;
++
++  unsigned num_kernels = HASH_COUNT(kernel_info_ds);
++
++  for (int mdIdx = 0; mdIdx < num_kernels; mdIdx++) {
++    if (strcmp(md[mdIdx].name, kernel_name) == 0) {
++      
++      memcpy(target, &md[mdIdx], sizeof( pocl_kernel_metadata_t));
++
++      target->name = strdup(md[mdIdx].name);
++
++      target->arg_info = (struct pocl_argument_info *) calloc (
++                          md[mdIdx].num_args, sizeof(struct pocl_argument_info));
++
++      memset(target->arg_info, 0, sizeof(struct pocl_argument_info) * md[mdIdx].num_args);
++      for (int i = 0; i < md[mdIdx].num_args; i++) { // copy over arg_info
++        memcpy(&target->arg_info[i], &md[mdIdx].arg_info[i],sizeof(struct pocl_argument_info));
++        target->arg_info[i].name = strdup(md[mdIdx].arg_info[i].name);
++        target->arg_info[i].type_name = strdup(md[mdIdx].arg_info[i].type_name);
++      }   // end arg_info parse
++
++    }
++  } 
++ 
++  return 0;
++}
++
++
++// check if passed kernel name is supported.
++cl_int pocl_proteus_supports_builtin_kernel(void *data, const char *kernel_name) {
++  //POCL_MSG_PRINT_INFO ("proteus: supports builtin kernel.\n");
++
++  kernel_info* kernel_info_entry;
++  HASH_FIND_STR(kernel_info_ds, kernel_name, kernel_info_entry);
++  if (kernel_info_entry) { // found
++    return 1;
++  }
++
++  return 0;
++}
++
++// get metadata for builtin kernels
++int pocl_proteus_setup_metadata (cl_device_id device, cl_program program, unsigned program_device_i) 
++{
++  if (program->builtin_kernel_names == nullptr)
++    return 0;
++
++  program->num_kernels = program->num_builtin_kernels;
++  if (program->num_kernels) {
++    program->kernel_meta = (pocl_kernel_metadata_t *)calloc(
++        program->num_kernels, sizeof(pocl_kernel_metadata_t));
++
++    for (size_t i = 0; i < program->num_kernels; ++i) {
++      pocl_proteus_get_builtin_kernel_metadata(device->data,
++                                             program->builtin_kernel_names[i],
++                                             &program->kernel_meta[i]);
++    }
++  }
++
++  return 1;
++}
++
++void pocl_proteus_wait_event (cl_device_id device, cl_event event)
++{
++  struct event_data *e_d = (struct event_data*) event->data;
++
++  POCL_LOCK_OBJ (event);
++  while (event->status > CL_COMPLETE)
++    {
++      pthread_cond_wait(&e_d->event_cond, &event->pocl_lock);
++    }
++  POCL_UNLOCK_OBJ (event);
++}
++
++void pocl_proteus_notify_event_finished (cl_event event)
++{
++  struct event_data *e_d = (struct event_data*) event->data;
++  pthread_cond_broadcast (&e_d->event_cond);
++}
++
++void pocl_proteus_notify_cmdq_finished (cl_command_queue cq)
++{
++  /* must be called with CQ already locked.
++   * this must be a broadcast since there could be multiple
++   * user threads waiting on the same command queue
++   * in pthread_scheduler_wait_cq(). */
++  pthread_cond_t *cq_cond = (pthread_cond_t *) cq->data;
++  int r = pthread_cond_broadcast (cq_cond);
++  assert (r == 0);
++}
++
++void pocl_proteus_update_event (cl_device_id device, cl_event event)
++{
++  struct event_data *e_d = NULL;
++  if (event->data == NULL && event->status == CL_QUEUED)
++    {
++      e_d = (struct event_data*) malloc(sizeof(struct event_data));
++      assert (e_d);
++
++      pthread_cond_init(&e_d->event_cond, NULL);
++      event->data = (void *) e_d;
++    }
++}
++
++void pocl_proteus_free_event_data (cl_event event)
++{
++  assert (event->data != NULL);
++  free (event->data);
++  event->data = NULL;
++}
++
++cl_int pocl_proteus_init_queue (cl_device_id device, cl_command_queue queue)
++{
++  queue->data = pocl_aligned_malloc (HOST_CPU_CACHELINE_SIZE, sizeof (pthread_cond_t)); 
++  
++  pthread_cond_t *cond = (pthread_cond_t *) queue->data;
++  int r = pthread_cond_init (cond, NULL);
++  assert (r == 0);
++
++  return CL_SUCCESS;
++}
++
++cl_int pocl_proteus_free_queue (cl_device_id device, cl_command_queue queue)
++{
++  pthread_cond_t *cond = (pthread_cond_t *) queue->data;
++
++  int r = pthread_cond_destroy (cond);
++  assert (r == 0);
++
++  POCL_MEM_FREE (queue->data);
++
++  return CL_SUCCESS;
++}
++
++// allocate device memory object: called on execution of clCreateBuffer().
++cl_int pocl_proteus_alloc_mem_obj (cl_device_id device, cl_mem mem_obj, void* host_ptr) {
++  //POCL_MSG_PRINT_INFO ("proteus: allocate memory object\n");
++
++  pocl_mem_identifier *p = &mem_obj->device_ptrs[device->global_mem_id];
++  assert(p->mem_ptr == NULL);
++  //chunk_info_t *chunk = NULL;
++
++  void *chunk = calloc (mem_obj->size,1);
++  if (chunk == NULL)
++    return CL_MEM_OBJECT_ALLOCATION_FAILURE;
++
++  POCL_MSG_PRINT_MEMORY ("proteus: allocated 0x%zu bytes\n", mem_obj->size);
++
++  p->mem_ptr = chunk;
++  p->version = 0;
++
++  return CL_SUCCESS;
++}
++
++// free device memory
++void pocl_proteus_free (cl_device_id device, cl_mem mem_obj) {
++  //POCL_MSG_PRINT_INFO("proteus: free dev memory\n");
++
++  // free dummy memory allocation on 'simulated device.'
++  void *chunk = (void *) mem_obj->device_ptrs[device->dev_id].mem_ptr;
++  free(chunk);
++
++  return;
++}
++
++cl_int pocl_proteus_init(unsigned j, cl_device_id dev, const char *parameters) {
++  //POCL_MSG_PRINT_INFO("proteus: init\n");
++   
++  SETUP_DEVICE_CL_VERSION(1, 2);
++  dev->type = CL_DEVICE_TYPE_CUSTOM;
++  dev->vendor = "pocl";
++  dev->version = "1.6";
++  dev->available = CL_TRUE;
++  dev->extensions = "";
++  dev->profile = "FULL_PROFILE";
++
++  // setup data struct
++  Data *D = new Data; // malloc does not properly initialize C++ objects such as std::vector
++  D->current_kernel = NULL;
++  D->kernel_metadata = NULL;
++  D->dataTransfer_rate = 0;
++  D->fixed_dataTransfer_latency = 0;
++  D->fixed_kernel_launch = 0;
++  
++  pocl_kernel_metadata_t* md = NULL;
++ 
++  if (!parameters) {
++    POCL_ABORT("proteus: parameters were not given.\n"
++               "Provide path to config file using env. var:\n"
++               "POCL_PROTEUSn_PARAMETERS=\"path/to/config.dat\".\n");
++    // for 1st device: env var is POCL_PROTEUS0_PARAMETERS
++  }
++  
++  // copy string to be nice
++  char *paramToken = strdup(parameters);
++  
++  // read file provided 
++  std::ifstream devInfoFile (paramToken); 
++  if (!devInfoFile.is_open()) {
++    POCL_ABORT("Could not open parameters file using fstream. Path: %s\n", paramToken);
++  }
++ 
++  std::vector<std::string> row;      // parse csv row
++  std::vector<std::string> argInfo; 
++  std::string line, temp;
++  char delim = ',', delimArgInfo = ':';
++  int dataType = 0, NumKernels = 0, NumArgs = 0;
++  int mdIdx = 0, parsedKernels = 0;
++  int numKernelDims = 0, __max_work_item_sizes_0 = 0, __max_work_item_sizes_1 = 0, __max_work_item_sizes_2 = 0;
++  kernel_info* kernel_info_entry;
++ 
++  // populate builtin_kernel_list: kernel names separated by semi-colon.
++  std::string supportedList;
++  
++  while(std::getline(devInfoFile, line)) {
++    if (line[0] == '#')
++      continue;  // ignore line with comment
++    
++    // read contents from single line
++    std::stringstream str_strm(line);
++    while(std::getline(str_strm, temp, delim)) {
++      row.push_back(temp);
++    } 
++
++    // get first non-comment line info.
++    // There are three different types of input lines, i.e., dataType.
++    if (dataType == 0) {  
++
++      if (row.size() > 8)
++        POCL_ABORT("Invalid format in parameters file.\n");
++
++      dev->long_name = strdup(row[0].c_str()); 
++
++      NumKernels = std::stoi(row[1]); 
++      if (NumKernels >= 1) {
++        md = ( pocl_kernel_metadata_t* ) calloc (NumKernels ,sizeof( pocl_kernel_metadata_t)); 
++        md->builtin_kernel = 1;
++      }
++
++      dev->max_compute_units= std::stoi(row[2]);  
++      dev->global_mem_id=0; //sys mem as global mem
++      dev->max_mem_alloc_size = 1024 * 1024 * 1024;
++      dev->global_mem_size = (size_t) std::stol(row[3]);
++      dev->local_mem_size = (size_t) dev->global_mem_size >> 1;
++      dev->max_clock_frequency = std::stoi(row[4]);    
++      D->fixed_dataTransfer_latency = std::stoi(row[5]);
++      D->dataTransfer_rate = std::stoi(row[6]);
++      D->fixed_kernel_launch = std::stoi(row[7]);
++
++      // there should only one line with dev-specific info.
++      dataType++; // move onto next line
++     
++    } else if (dataType == 1 && NumKernels >= 1) { // get kernel signature, e.g., name, num-args, arg-types. 
++
++      // setup kernel metadata
++      md[mdIdx].name = strdup(row[0].c_str()); // kernel-name
++      NumArgs = std::stoi(row[1]);
++      md[mdIdx].num_args = NumArgs; 
++      if (row.size() < NumArgs+2)
++        POCL_ABORT("Invalid format in parameters file.\n");
++
++      // setup arg_info
++      md[mdIdx].arg_info = (pocl_argument_info*) calloc (NumArgs, sizeof(pocl_argument_info));
++      for (int i = 0; i < NumArgs; i++) {
++        md[mdIdx].arg_info[i] = *(pocl_argument_info*) calloc (1,sizeof(pocl_argument_info));
++
++        std::stringstream str_strm_argInfo(row[i+2]);
++        while(std::getline(str_strm_argInfo, temp, delimArgInfo)) // read argInfo separated by ':' 
++          argInfo.push_back(temp);
++        
++        // the def of pocl argInfo is here: lib/CL/pocl_cl.h
++        md[mdIdx].arg_info[i].name = strdup(argInfo[0].c_str()); 
++        md[mdIdx].arg_info[i].type_name = strdup(argInfo[1].c_str());
++        // possible values for type: 
++        // POCL_ARG_TYPE_NONE; POCL_ARG_TYPE_POINTER; POCL_ARG_TYPE_IMAGE; POCL_ARG_TYPE_SAMPLER
++        // sampler is for image read functions. see: OpenCL sampler_t type for more info.
++        if (argInfo.size() > 2) {
++          if (argInfo[2] == "SCALAR")
++            md[mdIdx].arg_info[i].type = POCL_ARG_TYPE_NONE; 
++          else // includes "POINTER" and "LOCAL"
++            md[mdIdx].arg_info[i].type = POCL_ARG_TYPE_POINTER;
++        } else 
++            md[mdIdx].arg_info[i].type = POCL_ARG_TYPE_POINTER; // default
++        // possible values for address qualifier are as defined by OpenCL:
++        // CL_KERNEL_ARG_ADDRESS_GLOBAL; CL_KERNEL_ARG_ADDRESS_LOCAL; CL_KERNEL_ARG_ADDRESS_CONSTANT;
++        // CL_KERNEL_ARG_ADDRESS_PRIVATE
++	if (argInfo.size() > 2) {
++		if (argInfo[2] == "SCALAR")
++			md[mdIdx].arg_info[i].address_qualifier = CL_KERNEL_ARG_ADDRESS_CONSTANT;
++		else if (argInfo[2] == "LOCAL")
++        		md[mdIdx].arg_info[i].address_qualifier = CL_KERNEL_ARG_ADDRESS_LOCAL;
++		else // includes "POINTER"
++			md[mdIdx].arg_info[i].address_qualifier = CL_KERNEL_ARG_ADDRESS_GLOBAL;        
++        } else
++		md[mdIdx].arg_info[i].address_qualifier = CL_KERNEL_ARG_ADDRESS_GLOBAL; // default 
++	// moreover, it is also possible to provide the following:
++        // cl_kernel_arg_access_qualifier access_qualifier;
++        // cl_kernel_arg_type_qualifier type_qualifier; 
++        
++        argInfo.clear(); // for next arg.
++      }
++
++      HASH_FIND_STR(kernel_info_ds, row[0].c_str(), kernel_info_entry);
++      if (!kernel_info_entry) {
++        kernel_info_entry = (kernel_info*) malloc (sizeof(kernel_info));
++        char* newKey = (char*) malloc(sizeof(char) *(strlen(row[0].c_str()) + 1));
++        strcpy(newKey,row[0].c_str());
++        kernel_info_entry->kernel_name = newKey; // populate key
++        kernel_info_entry->latency = 0; // initialize vals
++        kernel_info_entry->power = 0;
++        kernel_info_entry->overhead = 0;
++        HASH_ADD_STR(kernel_info_ds, kernel_name, kernel_info_entry);
++      }
++
++      mdIdx++;
++      if (mdIdx == NumKernels) // parsed all kernels
++        dataType++; // move on to next info               
++
++    } else if (dataType == 2 && NumKernels >= 1) {
++        
++        HASH_FIND_STR(kernel_info_ds, row[0].c_str(), kernel_info_entry);
++        if (kernel_info_entry) { // found
++          // populating vals as specified by proteus:user
++          kernel_info_entry->latency = std::stoi(row[2]);
++          kernel_info_entry->power = std::stoi(row[3]);
++          kernel_info_entry->overhead = D->fixed_kernel_launch;
++        } else {
++          POCL_ABORT("Invalid format in parameters file. HINT: check kernel-name!\n");
++	}
++
++        // populate builtin kernel list. a semi-colon separated list of kernel names.
++        supportedList += row[0];
++        supportedList += ";";
++
++        numKernelDims = std::stoi(row[1]);
++        // parsing kernel WI and WG info provided by proteus:user 
++        for (int i = 0; i < numKernelDims; i++) {
++            // we are limited to 3 dims.
++            // find max across all kernels as specified by proteus:user for each dim
++            if (i == 0) 
++              __max_work_item_sizes_0 = std::max(__max_work_item_sizes_0, std::stoi(row[i+4]));
++            else if (i == 1)
++              __max_work_item_sizes_1 = std::max(__max_work_item_sizes_1, std::stoi(row[i+4]));
++            else
++              __max_work_item_sizes_2 = std::max(__max_work_item_sizes_2, std::stoi(row[i+4]));
++        }
++
++        parsedKernels++;
++        if (parsedKernels == NumKernels)
++          dataType++; // we are done!  
++
++    } else {
++      POCL_ABORT("Invalid format in parameters file.\n");
++    } 
++
++    row.clear(); // for next round
++  } // end-parse file
++  devInfoFile.close();
++
++  D->kernel_metadata = md;
++  dev->data = D;
++
++  dev->image_support = CL_FALSE;
++  // the platform associated with this device
++  dev->platform = 0;
++
++  dev->on_host_queue_props
++      = CL_QUEUE_OUT_OF_ORDER_EXEC_MODE_ENABLE | CL_QUEUE_PROFILING_ENABLE;
++
++  // this should ideally be specific to each kernel. 
++  // but lets set it at 3 being the max.
++  dev->max_work_item_dimensions = 3;
++  if (__max_work_item_sizes_0 > 0 && __max_work_item_sizes_1 > 0 
++          && __max_work_item_sizes_2 > 0) {
++    dev->max_work_group_size = __max_work_item_sizes_0 * __max_work_item_sizes_1 
++                                * __max_work_item_sizes_2;
++    dev->max_work_item_sizes[0] = __max_work_item_sizes_0;
++    dev->max_work_item_sizes[1] = __max_work_item_sizes_1;
++    dev->max_work_item_sizes[2] = __max_work_item_sizes_2;  
++  } else if (__max_work_item_sizes_0 > 0 && __max_work_item_sizes_1 > 0) {
++    dev->max_work_group_size = __max_work_item_sizes_0 * __max_work_item_sizes_1;
++    dev->max_work_item_sizes[0] = __max_work_item_sizes_0;
++    dev->max_work_item_sizes[1] = __max_work_item_sizes_1;
++    dev->max_work_item_sizes[2] = 1;
++  } else if (__max_work_item_sizes_0 > 0) {
++    dev->max_work_group_size = __max_work_item_sizes_0;
++    dev->max_work_item_sizes[0] = __max_work_item_sizes_0;
++    dev->max_work_item_sizes[1] = 1;
++    dev->max_work_item_sizes[2] = 1;
++  } else { // default
++    dev->max_work_group_size = dev->max_work_item_sizes[0] = 
++      dev->max_work_item_sizes[1] = dev->max_work_item_sizes[2] = INT_MAX;  
++  } 
++
++  dev->compiler_available = CL_FALSE;
++  dev->device_side_printf = 0;
++
++  // populate builtin_kernel_list: kernel names separated by semi-colon.
++  dev->builtin_kernel_list = strdup(supportedList.c_str());
++
++  // setup device memory data-structure
++  // start: the base address of the memory region to be managed.
++  //init_mem_region (memory_region_t *region, memory_address_t start, size_t size)
++
++  if (!scheduler_initialized) {
++    scheduler_initialized = 1;
++    pocl_proteus_init_kernel_run_command_manager();
++    proteus_pthread_scheduler_init (dev, kernel_info_ds); 
++  }
++ 
++  return CL_SUCCESS;
++}
++
++
++// release memory for device data-structure 
++cl_int pocl_proteus_uninit(unsigned /*j*/, cl_device_id device) {
++  //POCL_MSG_PRINT_INFO("proteus: uninit\n");
++  
++  struct Data *D = (struct Data *) device->data;
++
++  if (scheduler_initialized)
++    {
++      proteus_pthread_scheduler_uninit ();
++      scheduler_initialized = 0;
++    }
++
++  delete D;
++  
++  return CL_SUCCESS;
++}
++
++cl_int pocl_proteus_reinit (unsigned j, cl_device_id device) {
++
++  Data *D = new Data; // malloc does not properly initialize C++ objects such as std::vector
++  D->current_kernel = NULL;
++  D->kernel_metadata = NULL;
++  /* TODO: how to re-populate this info */
++  D->dataTransfer_rate = 0;
++  D->fixed_dataTransfer_latency = 0;
++  D->fixed_kernel_launch = 0;
++  
++  device->data = D;
++
++  if (!scheduler_initialized)
++    {
++      proteus_pthread_scheduler_init (device, kernel_info_ds);
++      scheduler_initialized = 1;
++    }
++
++  return CL_SUCCESS;
++}
++
++
++// submit is called for all read/writes (data transfers) and kernel executions calls.
++void pocl_proteus_submit(_cl_command_node *Node, cl_command_queue /*CQ*/) {
++  //POCL_MSG_PRINT_INFO("proteus: submit\n");	
++
++  Node->ready = 1;
++  if (pocl_command_is_ready (Node->event))
++    {
++      pocl_update_event_submitted (Node->event);
++      proteus_pthread_scheduler_push_command (Node);
++    }
++  POCL_UNLOCK_OBJ (Node->event);
++
++  return;
++}
++
++// perform operations from command queue. 
++// called when user requests operations to be completed from the queue.
++// NOTE: this is also called upon invocation of clFlush();
++void pocl_proteus_join(cl_device_id Device, cl_command_queue cq) {
++  //POCL_MSG_PRINT_INFO("proteus: join or flush\n");
++
++  POCL_LOCK_OBJ (cq);
++  pthread_cond_t *cq_cond = (pthread_cond_t *)cq->data;
++  while (1) {
++    if (cq->command_count == 0) {  // we are done!
++       POCL_UNLOCK_OBJ (cq);
++       return;
++    } else {
++        int r = pthread_cond_wait (cq_cond, &cq->pocl_lock);
++        assert (r == 0);
++    }
++  }
++
++  return;
++}
++
++void pocl_proteus_flush(cl_device_id device, cl_command_queue cq)
++{
++
++}
++
++
++// updates OCL events based on current status. invocation after data transfers and kernel execution.
++void pocl_proteus_notify(cl_device_id Device, cl_event Event, cl_event Finished) {
++  //POCL_MSG_PRINT_INFO("proteus: notify\n");
++ 
++  struct Data &D = *(struct Data *) Device->data;
++  
++  _cl_command_node *volatile Node = Event->command;
++
++  if (Finished->status < CL_COMPLETE) {
++    pocl_update_event_failed(Event);  
++    return;
++  }
++
++  if (!Node->ready)
++    return;
++
++  if (pocl_command_is_ready(Event)) {
++    if (Event->status == CL_QUEUED) {
++      pocl_update_event_submitted(Event);
++      proteus_pthread_scheduler_push_command (Node);
++    }
++  }
++
++  return;
++}
++
++// read from device
++void pocl_proteus_read (void *data,
++                 void *__restrict__ host_ptr,
++                 pocl_mem_identifier * src_mem_id,
++                 cl_mem src_buf,
++                 size_t offset, size_t size)
++{ 
++  //POCL_MSG_PRINT_INFO("proteus: read.\n");
++  // Here, data transfer time is modelled is based on size of data transfer,
++  //       and memory setup/interconnect type.
++
++  void *__restrict__ device_ptr = src_mem_id->mem_ptr;
++  if (host_ptr == device_ptr)
++    return;
++
++  struct Data* D = (struct Data *) data;
++  float dataTransfer_latency = (float) size / 1048576UL; // size in Mega-bytes
++  dataTransfer_latency /= D->dataTransfer_rate;          // latency in seconds.
++  dataTransfer_latency *= 1000000000UL;                  // latency in nanoseconds.
++ 
++  float read_delay = (float) D->fixed_dataTransfer_latency + dataTransfer_latency;
++
++  //std::cout << "Copying data of size: " << size << " Bytes.\n" 
++  //          << "The data transfer rate provided is: " << D->dataTransfer_rate << " MB/s\n"
++  //          << "This translates to : " << read_delay << " nano-sec. "
++  //          << "Includes fixed data transfer overhead: " << D->fixed_dataTransfer_latency << " nano-secs."
++  //          << std::endl;
++  
++ 
++  //std::thread::id this_id = std::this_thread::get_id();
++  //std::cout << "Thread " << this_id << " sleeping for " << read_delay << " nano-secs." << std::endl; 
++  std::this_thread::sleep_for (std::chrono::nanoseconds((unsigned long long) read_delay));
++
++  if (device_ptr == NULL)
++     assert (false && "proteus: read device_ptr is NULL.\n");
++
++  memcpy (host_ptr, (char *)device_ptr + offset, size);
++}
++
++void pocl_proteus_write (void *data,
++                  const void *__restrict__  host_ptr,
++                  pocl_mem_identifier * dst_mem_id,
++                  cl_mem dst_buf,
++                  size_t offset, size_t size)
++{
++  //POCL_MSG_PRINT_INFO("proteus: write.\n");
++  // Here, data transfer time is modelled is based on size of data transfer,
++  //       and memory setup/interconnect type.
++
++  void *__restrict__ device_ptr = dst_mem_id->mem_ptr;
++  if (host_ptr == device_ptr)
++    return;
++  
++  struct Data* D = (struct Data *) data;
++  float dataTransfer_latency = (float) size / 1048576UL; // size in Mega-bytes
++  dataTransfer_latency /= D->dataTransfer_rate;          // latency in seconds.
++  dataTransfer_latency *= 1000000000UL;                  // latency in nanoseconds.
++
++  float write_delay = (float) D->fixed_dataTransfer_latency + dataTransfer_latency;
++
++//  std::cout << "Copying data of size: " << size << " Bytes.\n"
++//            << "The data transfer rate provided is: " << dataTransfer << " MB/s\n"
++//            << "This translates to : " << write_delay << " nano-sec. "
++//            << "Includes fixed data transfer overhead: " << D->fixed_dataTransfer_latency << " nano-secs."
++//            << std::endl;
++
++  std::this_thread::sleep_for (std::chrono::nanoseconds((unsigned long long) write_delay));
++
++  if (device_ptr == NULL)
++     assert (false && "proteus: write device_ptr is NULL.\n");
++
++  // dest, src, #-of-bytes
++  memcpy ((char *)device_ptr + offset, host_ptr, size);
++}
++
++void pocl_proteus_memfill (void *data, pocl_mem_identifier *dst_mem_id,
++                    cl_mem dst_buf, size_t size, size_t offset,
++                    const void *__restrict__ pattern, size_t pattern_size)
++{
++  //POCL_MSG_PRINT_INFO("proteus: memfill.\n");
++  // Here, data transfer time is modelled is based on size of data transfer,
++  //       and memory setup/interconnect type.
++
++  struct Data* D = (struct Data *) data;
++  float dataTransfer_latency = (float) size / 1048576UL; // size in Mega-bytes
++  dataTransfer_latency /= D->dataTransfer_rate;          // latency in seconds.
++  dataTransfer_latency *= 1000000000UL;                  // latency in nanoseconds.
++
++  float memfill_delay = (float) D->fixed_dataTransfer_latency + dataTransfer_latency;
++ 
++  std::this_thread::sleep_for (std::chrono::nanoseconds((unsigned long long) memfill_delay));
++
++  void *__restrict__ ptr = dst_mem_id->mem_ptr;
++  if (ptr == NULL) 
++     assert (false && "proteus: write device_ptr is NULL.\n");
++  
++  size_t i;
++  unsigned j;
++
++  // Do some dummy work 
++  /* memfill size is in bytes, we want to make it into elements */
++  size /= pattern_size;
++  offset /= pattern_size;
++
++  switch (pattern_size) {
++    case 1: 
++      {
++      uint8_t * p = (uint8_t*)ptr + offset;
++      for (i = 0; i < size; i++)
++        p[i] = *(uint8_t*)pattern;
++      }
++      break;
++    case 2: 
++      {
++      uint16_t * p = (uint16_t*)ptr + offset;
++      for (i = 0; i < size; i++)
++        p[i] = *(uint16_t*)pattern;
++      }
++      break;
++    case 4: 
++      {
++      uint32_t * p = (uint32_t*)ptr + offset;
++      for (i = 0; i < size; i++)
++        p[i] = *(uint32_t*)pattern;	
++      }
++      break;
++    case 8:
++      {
++      uint64_t * p = (uint64_t*)ptr + offset;
++      for (i = 0; i < size; i++)
++        p[i] = *(uint64_t*)pattern;
++      }
++      break;
++    case 16:
++      {
++      uint64_t * p = (uint64_t*)ptr + (offset << 1);
++      for (i = 0; i < size; i++)
++        for (j = 0; j < 2; j++)
++          p[(i<<1) + j] = *((uint64_t*)pattern + j);
++      }
++      break;
++    case 32:
++      {
++      uint64_t * p = (uint64_t*)ptr + (offset << 2);
++      for (i = 0; i < size; i++)
++        for (j = 0; j < 4; j++)
++          p[(i<<2) + j] = *((uint64_t*)pattern + j);
++      }
++      break;
++    case 64:
++      {
++      uint64_t * p = (uint64_t*)ptr + (offset << 3);
++      for (i = 0; i < size; i++)
++        for (j = 0; j < 8; j++)
++          p[(i<<3) + j] = *((uint64_t*)pattern + j);
++      }
++      break;
++    case 128:
++      {
++      uint64_t * p = (uint64_t*)ptr + (offset << 4);
++      for (i = 0; i < size; i++)
++        for (j = 0; j < 16; j++)
++          p[(i<<4) + j] = *((uint64_t*)pattern + j);
++      }
++      break;
++    default:
++      assert (0 && "Invalid pattern size");
++      break;
++  }  
++  
++  return; 
++}
++
++// kernel invocations are done through scheduler
++void pocl_proteus_run (void *data, _cl_command_node *cmd) {
++
++}
+diff --git a/lib/CL/devices/proteus/proteus.h b/lib/CL/devices/proteus/proteus.h
+new file mode 100644
+index 00000000..86a0669d
+--- /dev/null
++++ b/lib/CL/devices/proteus/proteus.h
+@@ -0,0 +1,21 @@
++#ifndef POCL_PROTEUS_H
++#define POCL_PROTEUS_H
++
++#include "config.h"
++#include "pocl_cl.h"
++#include "pocl_icd.h"
++#include "prototypes.inc"
++
++#ifdef __cplusplus
++extern "C"
++{
++#endif
++
++  GEN_PROTOTYPES (basic)
++  GEN_PROTOTYPES (proteus)
++
++#ifdef __cplusplus
++}
++#endif
++
++#endif /* POCL_PROTEUS_H */
+diff --git a/lib/CL/devices/proteus/proteus_pthread_scheduler.c b/lib/CL/devices/proteus/proteus_pthread_scheduler.c
+new file mode 100644
+index 00000000..c0d086e1
+--- /dev/null
++++ b/lib/CL/devices/proteus/proteus_pthread_scheduler.c
+@@ -0,0 +1,507 @@
++// OpenCL proteus-mt device implementation: work-group scheduled onto compute units/pthreads.
++/*
++
++   Copyright (c) 2011-2019 pocl developers
++
++   Permission is hereby granted, free of charge, to any person obtaining a copy
++   of this software and associated documentation files (the "Software"), to
++   deal in the Software without restriction, including without limitation the
++   rights to use, copy, modify, merge, publish, distribute, sublicense, and/or
++   sell copies of the Software, and to permit persons to whom the Software is
++   furnished to do so, subject to the following conditions:
++
++   The above copyright notice and this permission notice shall be included in
++   all copies or substantial portions of the Software.
++
++   THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
++   IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
++   FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
++   AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
++   LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
++   FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
++   IN THE SOFTWARE.
++*/
++
++#define _GNU_SOURCE
++
++#ifdef __linux__
++#include <sched.h>
++#endif
++
++#include <pthread.h>
++#include <string.h>
++#include <time.h>
++#include <unistd.h>
++
++#include "pocl-proteus_pthread_scheduler.h"
++#include "pocl_cl.h"
++#include "proteus.h"
++#include "pocl-proteus_pthread_utils.h"
++#include "utlist.h"
++#include "pocl_util.h"
++#include "common.h"
++#include "pocl_mem_management.h"
++#include "uthash.h"
++
++static void* pocl_proteus_pthread_driver_thread (void *p);
++
++struct pool_thread_data
++{
++  pthread_t thread __attribute__ ((aligned (HOST_CPU_CACHELINE_SIZE)));
++
++  unsigned long executed_commands;
++  /* per-CU (= per-thread) local memory */
++  void *local_mem;
++  unsigned num_threads;
++  /* index of this particular thread
++   * [0, num_threads-1]
++   * used for deciding whether a particular thread should run
++   * commands scheduled on a subdevice. */
++  unsigned index;
++} __attribute__ ((aligned (HOST_CPU_CACHELINE_SIZE)));
++
++typedef struct scheduler_data_
++{
++  unsigned num_threads;
++
++  struct pool_thread_data *thread_pool;
++  size_t local_mem_size;
++
++  _cl_command_node *work_queue
++      __attribute__ ((aligned (HOST_CPU_CACHELINE_SIZE)));  // decomposition of kernels into WGs
++  kernel_run_command *kernel_queue;  // all the enqueued kernels
++
++  pthread_cond_t wake_pool __attribute__ ((aligned (HOST_CPU_CACHELINE_SIZE)));
++  POCL_FAST_LOCK_T wq_lock_fast __attribute__ ((aligned (HOST_CPU_CACHELINE_SIZE)));
++
++  int thread_pool_shutdown_requested;
++
++  kernel_info* LatencyInfo;
++
++} scheduler_data __attribute__ ((aligned (HOST_CPU_CACHELINE_SIZE)));
++
++static scheduler_data scheduler;
++
++void proteus_pthread_scheduler_init (cl_device_id device, kernel_info* info)
++{
++  unsigned i;
++  size_t num_worker_threads = device->max_compute_units;  // proteus: user-defined 
++  POCL_FAST_INIT (scheduler.wq_lock_fast);
++
++  pthread_cond_init (&(scheduler.wake_pool), NULL);
++
++  scheduler.thread_pool = pocl_aligned_malloc (
++      HOST_CPU_CACHELINE_SIZE,
++      num_worker_threads * sizeof (struct pool_thread_data));
++  memset (scheduler.thread_pool, 0,
++          num_worker_threads * sizeof (struct pool_thread_data));
++
++  scheduler.num_threads = num_worker_threads;
++  assert (num_worker_threads > 0);
++
++  /* safety margin - aligning pointers later (in kernel arg setup)
++   * may require more local memory than actual local mem size. */
++  scheduler.local_mem_size = device->local_mem_size << 4;
++
++  scheduler.LatencyInfo = info; // proteus: user provided
++  
++  // create thread pool
++  for (i = 0; i < num_worker_threads; ++i)
++    {
++      scheduler.thread_pool[i].index = i;
++      pthread_create (&scheduler.thread_pool[i].thread, NULL,
++                      pocl_proteus_pthread_driver_thread,
++                      (void*)&scheduler.thread_pool[i]);
++    }
++
++}
++
++void
++proteus_pthread_scheduler_uninit ()
++{
++  unsigned i;
++
++  POCL_FAST_LOCK (scheduler.wq_lock_fast);
++  scheduler.thread_pool_shutdown_requested = 1;
++  pthread_cond_broadcast (&scheduler.wake_pool);
++  POCL_FAST_UNLOCK (scheduler.wq_lock_fast);
++
++  // destroy thread pool
++  for (i = 0; i < scheduler.num_threads; ++i)
++    {
++      // TODO: find some other way of reporting this info.
++      //printf("RA-POCL: thread: %d ... total commands executed: %zu\n", 
++      //           scheduler.thread_pool[i].index, scheduler.thread_pool[i].executed_commands); 
++      
++      pthread_join (scheduler.thread_pool[i].thread, NULL);
++    }
++
++  pocl_aligned_free (scheduler.thread_pool);
++  POCL_FAST_DESTROY (scheduler.wq_lock_fast);
++  pthread_cond_destroy (&scheduler.wake_pool);
++
++  scheduler.thread_pool_shutdown_requested = 0;
++}
++
++/* push_command and push_kernel MUST use broadcast and wake up all threads,
++   because commands can be for subdevices (= not all threads) */
++void proteus_pthread_scheduler_push_command (_cl_command_node *cmd)
++{
++  POCL_FAST_LOCK (scheduler.wq_lock_fast);
++  DL_APPEND (scheduler.work_queue, cmd);
++  pthread_cond_broadcast (&scheduler.wake_pool);
++  POCL_FAST_UNLOCK (scheduler.wq_lock_fast);
++}
++
++static void
++proteus_pthread_scheduler_push_kernel (kernel_run_command *run_cmd)
++{
++  POCL_FAST_LOCK (scheduler.wq_lock_fast);
++  DL_APPEND (scheduler.kernel_queue, run_cmd);
++  pthread_cond_broadcast (&scheduler.wake_pool);
++  POCL_FAST_UNLOCK (scheduler.wq_lock_fast);
++}
++
++/* if subd is not a subdevice, returns 1
++ * if subd is subdevice, takes a look at the subdevice CUs
++ * and if they match the current driver thread, returns 1
++ * otherwise returns 0 */
++static int
++shall_we_run_this (thread_data *td, cl_device_id subd)
++{
++
++  if (subd && subd->parent_device)
++    {
++      if (!((td->index >= subd->core_start)
++            && (td->index < (subd->core_start + subd->core_count))))
++        {
++          return 0;
++        }
++    }
++  return 1;
++}
++
++/* Maximum and minimum chunk sizes for get_wg_index_range().
++ * Each pthread driver's thread fetches work from a kernel's WG pool in
++ * chunks, this determines the limits (scaled up by # of threads). */
++#define POCL_PTHREAD_MAX_WGS 256
++#define POCL_PTHREAD_MIN_WGS 32
++
++static int
++get_wg_index_range (kernel_run_command *k, unsigned *start_index,
++                    unsigned *end_index, int *last_wgs, unsigned num_threads)
++{
++  const unsigned scaled_max_wgs = POCL_PTHREAD_MAX_WGS * num_threads;
++  const unsigned scaled_min_wgs = POCL_PTHREAD_MIN_WGS * num_threads;
++
++  unsigned limit;
++  unsigned max_wgs;
++  POCL_FAST_LOCK (k->lock);
++  if (k->remaining_wgs == 0)  // done with a kernel execution.
++    {
++      POCL_FAST_UNLOCK (k->lock);
++      return 0;
++    }
++
++  /* If the work is comprised of huge number of WGs of small WIs,
++   * then get_wg_index_range() becomes a problem on manycore CPUs
++   * because lock contention on k->lock.
++   *
++   * If we have enough workgroups, scale up the requests linearly by
++   * num_threads, otherwise fallback to smaller workgroups.
++   */
++  if (k->remaining_wgs <= (scaled_max_wgs * num_threads))
++    limit = scaled_min_wgs;
++  else
++    limit = scaled_max_wgs;
++
++  // divide two integers rounding up, i.e. ceil(k->remaining_wgs/num_threads)
++  const unsigned wgs_per_thread = (1 + (k->remaining_wgs - 1) / num_threads);
++  max_wgs = min (limit, wgs_per_thread);
++  max_wgs = min (max_wgs, k->remaining_wgs);
++  assert (max_wgs > 0);
++
++  *start_index = k->wgs_dealt;
++  *end_index = k->wgs_dealt + max_wgs-1;
++  k->remaining_wgs -= max_wgs;
++  k->wgs_dealt += max_wgs;
++  if (k->remaining_wgs == 0)
++    *last_wgs = 1;
++  //printf("RA-POCL: thread doing this amount of work: %d ... start-ind: %u and end-ind: %u\n", max_wgs, *start_index, *end_index);
++  POCL_FAST_UNLOCK (k->lock);
++
++  return 1;
++}
++
++inline static void translate_wg_index_to_3d_index (kernel_run_command *k,
++                                                   unsigned index,
++                                                   size_t *index_3d,
++                                                   unsigned xy_slice,
++                                                   unsigned row_size)
++{
++  index_3d[2] = index / xy_slice;
++  index_3d[1] = (index % xy_slice) / row_size;
++  index_3d[0] = (index % xy_slice) % row_size;
++}
++
++static int
++work_group_scheduler (kernel_run_command *k,
++                      struct pool_thread_data *thread_data)
++{
++  pocl_kernel_metadata_t *meta = k->kernel->meta;
++
++  void *arguments[meta->num_args + meta->num_locals + 1];
++  void *arguments2[meta->num_args + meta->num_locals + 1];
++  struct pocl_context pc;
++  unsigned i;
++  unsigned start_index;
++  unsigned end_index;
++  int last_wgs = 0;
++
++  if (!get_wg_index_range (k, &start_index, &end_index, &last_wgs,
++                           thread_data->num_threads))
++    return 0;
++
++  assert (end_index >= start_index);
++
++  setup_kernel_arg_array_with_locals (
++      (void **)&arguments, (void **)&arguments2, k, thread_data->local_mem,
++      scheduler.local_mem_size);
++  memcpy (&pc, &k->pc, sizeof (struct pocl_context));
++  
++  //unsigned slice_size = k->pc.num_groups[0] * k->pc.num_groups[1];
++  //unsigned row_size = k->pc.num_groups[0];
++
++  // simulates thread delay -- proteus
++  struct timespec tim;
++  tim.tv_sec = 0;
++  tim.tv_nsec = k->latency;
++
++  do
++    {
++      if (last_wgs) // done with this kernel 
++        {
++          POCL_FAST_LOCK (scheduler.wq_lock_fast);
++          DL_DELETE (scheduler.kernel_queue, k);
++          POCL_FAST_UNLOCK (scheduler.wq_lock_fast);
++        }
++
++      // chunk of WGs for this thread
++      for (i = start_index; i <= end_index; ++i)
++        {
++          nanosleep(&tim , NULL); // sleep
++        }
++    }
++  while (get_wg_index_range (k, &start_index, &end_index, &last_wgs,
++                             thread_data->num_threads));
++
++  free_kernel_arg_array_with_locals ((void **)&arguments, (void **)&arguments2,
++                                     k);
++
++  return 1;
++}
++
++static void
++finalize_kernel_command (struct pool_thread_data *thread_data,
++                         kernel_run_command *k)
++{
++  //printf("RA-POCL: kernel %s finished\n", k->cmd->command.run.kernel->name);
++
++  free_kernel_arg_array (k);
++
++  pocl_ndrange_node_cleanup (k->cmd);
++
++  POCL_UPDATE_EVENT_COMPLETE_MSG (k->cmd->event, "NDRange Kernel        ");
++
++  pocl_mem_manager_free_command (k->cmd);
++  POCL_FAST_DESTROY (k->lock);
++  free_kernel_run_command (k);
++}
++
++static void
++pocl_pthread_prepare_kernel (void *data, _cl_command_node *cmd)
++{
++  kernel_run_command *run_cmd;
++  cl_kernel kernel = cmd->command.run.kernel;
++  struct pocl_context *pc = &cmd->command.run.pc;
++
++  // num_groups = global_size/local_size;
++  size_t num_groups = pc->num_groups[0] * pc->num_groups[1] * pc->num_groups[2];
++	
++  run_cmd = new_kernel_run_command ();
++  run_cmd->data = data;
++  run_cmd->kernel = kernel;
++  run_cmd->device = cmd->device;
++  run_cmd->pc = *pc;
++  run_cmd->cmd = cmd;
++  run_cmd->remaining_wgs = num_groups;
++  run_cmd->wgs_dealt = 0;
++  run_cmd->workgroup = cmd->command.run.wg;
++  run_cmd->kernel_args = cmd->command.run.arguments;
++  run_cmd->next = NULL;
++  run_cmd->ref_count = 0;
++  POCL_FAST_INIT (run_cmd->lock);
++
++  kernel_info* entry;
++  HASH_FIND_STR(scheduler.LatencyInfo, kernel->meta->name, entry);
++  assert(entry); 
++  run_cmd->latency = entry->latency;
++
++  setup_kernel_arg_array (run_cmd);
++
++  pocl_update_event_running (cmd->event);
++
++  proteus_pthread_scheduler_push_kernel (run_cmd);
++}
++
++/*
++  These two check the entire kernel/cmd queue. This is necessary
++  because of commands for subdevices. The old code only checked
++  the head of each queue; this can lead to a deadlock:
++
++  two driver threads, each assigned two subdevices A, B, one
++  driver queue C
++
++  cmd A1 for A arrives in C, A starts processing
++  cmd B1 for B arrives in C, B starts processing
++  cmds A2, A3, B2 are pushed to C
++  B finishes processing B1, checks queue head, A2 isn't for it, goes to sleep
++  A finishes processing A1, processes A2 + A3 but ignores B2, it's not for it
++  application calls clFinish to wait for queue
++
++  ...now B is sleeping and not possible to wake up
++  (since no new commands can arrive) and there's a B2 command
++  which will never be processed.
++
++  it's possible to workaround but it's cleaner to just check the whole queue.
++ */
++
++static _cl_command_node *
++check_cmd_queue_for_device (thread_data *td)
++{
++  _cl_command_node *cmd;
++  DL_FOREACH (scheduler.work_queue, cmd)
++  {
++    //cl_device_id subd = cmd->device;
++    //if (shall_we_run_this (td, subd))
++    //  {
++        DL_DELETE (scheduler.work_queue, cmd)
++        return cmd;
++    //  }
++  }
++
++  return NULL;
++}
++
++static kernel_run_command *
++check_kernel_queue_for_device (thread_data *td)
++{
++  kernel_run_command *cmd;
++  DL_FOREACH (scheduler.kernel_queue, cmd)
++  {
++    //cl_device_id subd = cmd->device;
++    //if (shall_we_run_this (td, subd))
++      return cmd;
++  }
++
++  return NULL;
++}
++
++static int
++pthread_scheduler_get_work (thread_data *td)
++{
++  _cl_command_node *cmd;
++  kernel_run_command *run_cmd;
++
++  /* execute kernel if available */
++  POCL_FAST_LOCK (scheduler.wq_lock_fast);
++  int do_exit = 0;
++
++RETRY:
++  do_exit = scheduler.thread_pool_shutdown_requested;
++
++  run_cmd = check_kernel_queue_for_device (td);
++  /* execute kernel if available */
++  if (run_cmd)
++    {
++      ++run_cmd->ref_count;
++      POCL_FAST_UNLOCK (scheduler.wq_lock_fast);
++
++      work_group_scheduler (run_cmd, td);
++
++      POCL_FAST_LOCK (scheduler.wq_lock_fast);
++      if ((--run_cmd->ref_count) == 0)
++        {
++          POCL_FAST_UNLOCK (scheduler.wq_lock_fast);
++          finalize_kernel_command (td, run_cmd);
++          POCL_FAST_LOCK (scheduler.wq_lock_fast);
++        }
++    }
++
++  /* execute a command if available */
++  cmd = check_cmd_queue_for_device (td);
++  if (cmd)
++    {
++      POCL_FAST_UNLOCK (scheduler.wq_lock_fast);
++
++      assert (pocl_command_is_ready (cmd->event));
++
++      if (cmd->type == CL_COMMAND_NDRANGE_KERNEL)
++        {
++          pocl_pthread_prepare_kernel (cmd->device->data, cmd);
++        }
++      else
++        {
++          pocl_exec_command (cmd);
++        }
++
++      POCL_FAST_LOCK (scheduler.wq_lock_fast);
++      ++td->executed_commands;
++    }
++
++  /* if neither a command nor a kernel was available, sleep */
++  if ((cmd == NULL) && (run_cmd == NULL) && (do_exit == 0))
++    {
++      pthread_cond_wait (&scheduler.wake_pool, &scheduler.wq_lock_fast);
++      goto RETRY;
++    }
++
++  POCL_FAST_UNLOCK (scheduler.wq_lock_fast);
++
++  return do_exit;
++}
++
++
++static
++void*
++pocl_proteus_pthread_driver_thread (void *p)
++{
++  struct pool_thread_data *td = (struct pool_thread_data*)p;
++  int do_exit = 0;
++  assert (td);
++  td->num_threads = scheduler.num_threads;
++
++  assert (scheduler.local_mem_size > 0);
++  td->local_mem = pocl_aligned_malloc (MAX_EXTENDED_ALIGNMENT,
++                                       scheduler.local_mem_size);
++  assert (td->local_mem);
++#ifdef __linux__
++  if (pocl_get_bool_option ("POCL_AFFINITY", 0))
++    {
++      cpu_set_t set;
++      CPU_ZERO (&set);
++      CPU_SET (td->index, &set);
++      pthread_setaffinity_np (td->thread, sizeof (cpu_set_t), &set);
++    }
++#endif
++
++  while (1)
++    {
++      do_exit = pthread_scheduler_get_work (td);
++      if (do_exit)
++        {
++          pocl_aligned_free (td->local_mem);
++          pthread_exit (NULL);
++        }
++    }
++}
+diff --git a/lib/CL/devices/proteus/proteus_pthread_utils.c b/lib/CL/devices/proteus/proteus_pthread_utils.c
+new file mode 100644
+index 00000000..a2ac56dc
+--- /dev/null
++++ b/lib/CL/devices/proteus/proteus_pthread_utils.c
+@@ -0,0 +1,270 @@
++// Utilities for the pthread driver of proteus-mt
++/*
++   Copyright (c) 2011-2013 Universidad Rey Juan Carlos and
++                 2011-2019 Pekka Jääskeläinen
++
++   Permission is hereby granted, free of charge, to any person obtaining a copy
++   of this software and associated documentation files (the "Software"), to
++   deal in the Software without restriction, including without limitation the
++   rights to use, copy, modify, merge, publish, distribute, sublicense, and/or
++   sell copies of the Software, and to permit persons to whom the Software is
++   furnished to do so, subject to the following conditions:
++
++   The above copyright notice and this permission notice shall be included in
++   all copies or substantial portions of the Software.
++
++   THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
++   IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
++   FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
++   AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
++   LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
++   FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
++   IN THE SOFTWARE.
++*/
++
++#include <string.h>
++#include "pocl-proteus_pthread_utils.h"
++#include "utlist.h"
++#include "common.h"
++#include "proteus.h"
++#include "pocl_mem_management.h"
++
++#ifdef USE_POCL_MEMMANAGER
++
++static kernel_run_command *volatile kernel_pool = 0;
++static int kernel_pool_initialized = 0;
++static pocl_lock_t kernel_pool_lock;
++
++
++void pocl_proteus_init_kernel_run_command_manager (void)
++{
++  if (!kernel_pool_initialized)
++    {
++      kernel_pool_initialized = 1;
++      POCL_INIT_LOCK (kernel_pool_lock);
++    }
++}
++
++void pocl_init_thread_argument_manager (void)
++{
++  if (!kernel_pool_initialized)
++    {
++      kernel_pool_initialized = 1;
++      POCL_INIT_LOCK (kernel_pool_lock);
++    }
++}
++
++kernel_run_command* new_kernel_run_command ()
++{
++  kernel_run_command *volatile k = NULL;
++  POCL_LOCK (kernel_pool_lock);
++  if ((k = kernel_pool))
++    {
++      LL_DELETE (kernel_pool, k);
++      memset (k, 0, sizeof(kernel_run_command));
++      pthread_mutex_init(&k->lock, NULL);
++      POCL_UNLOCK (kernel_pool_lock);
++      return k;
++    }
++
++  POCL_UNLOCK (kernel_pool_lock);
++  k = (kernel_run_command*)calloc (1, sizeof (kernel_run_command));
++  pthread_mutex_init (&k->lock, NULL);
++  return k;
++}
++
++void free_kernel_run_command (kernel_run_command *k)
++{
++  POCL_LOCK (kernel_pool_lock);
++  pthread_mutex_destroy (&k->lock);
++  LL_PREPEND (kernel_pool, k);
++  POCL_UNLOCK (kernel_pool_lock);
++}
++
++#endif
++
++#define ARGS_SIZE (sizeof (void *) * (meta->num_args + meta->num_locals + 1))
++
++static char *
++align_ptr (char *p)
++{
++  uintptr_t r = (uintptr_t)p;
++  if (r & (MAX_EXTENDED_ALIGNMENT - 1))
++    {
++      r = r & (~(MAX_EXTENDED_ALIGNMENT - 1));
++      r += MAX_EXTENDED_ALIGNMENT;
++    }
++  return (char *)r;
++}
++
++/* called from kernel setup code.
++ * Sets up the actual arguments, except the local ones. */
++void
++setup_kernel_arg_array (kernel_run_command *k)
++{
++  struct pocl_argument *al;
++
++  pocl_kernel_metadata_t *meta = k->kernel->meta;
++  cl_uint i;
++  void **arguments;
++  void **arguments2;
++  k->arguments = arguments
++      = pocl_aligned_malloc (MAX_EXTENDED_ALIGNMENT, ARGS_SIZE);
++  k->arguments2 = arguments2
++      = pocl_aligned_malloc (MAX_EXTENDED_ALIGNMENT, ARGS_SIZE);
++
++  for (i = 0; i < meta->num_args; ++i)
++    {
++      al = &(k->kernel_args[i]);
++      if (ARG_IS_LOCAL (meta->arg_info[i]))
++        {
++          arguments[i] = NULL;
++          arguments2[i] = NULL;
++        }
++      else if (meta->arg_info[i].type == POCL_ARG_TYPE_POINTER)
++        {
++          /* It's legal to pass a NULL pointer to clSetKernelArguments. In
++             that case we must pass the same NULL forward to the kernel.
++             Otherwise, the user must have created a buffer with per device
++             pointers stored in the cl_mem. */
++          arguments[i] = &arguments2[i];
++          if (al->value == NULL)
++            {
++              arguments2[i] = NULL;
++            }
++          else
++            {
++              cl_mem m = *(cl_mem *)al->value;
++              if (m->device_ptrs)
++                arguments2[i] = m->device_ptrs[k->device->dev_id].mem_ptr;
++              else
++                arguments2[i] = m->mem_host_ptr;
++
++              arguments2[i] += al->offset;
++            }
++        }
++      else if (meta->arg_info[i].type == POCL_ARG_TYPE_IMAGE)
++        {
++          POCL_ABORT_UNIMPLEMENTED("proteus: image arguments");
++	}
++      else if (meta->arg_info[i].type == POCL_ARG_TYPE_SAMPLER)
++        {
++          POCL_ABORT_UNIMPLEMENTED("proteus: sampler type arguments");
++        }
++      else
++        arguments[i] = al->value;
++    }
++}
++
++/* called from each driver thread.
++ * "arguments" and "arguments2" are the output:
++ * driver-thread-local copies of kern args.
++ *
++ * they're set up by 1) memcpy from kernel_run_command, 2) all
++ * local args are set to thread-local "local memory" storage. */
++void
++setup_kernel_arg_array_with_locals (void **arguments, void **arguments2,
++                                    kernel_run_command *k, char *local_mem,
++                                    size_t local_mem_size)
++{
++  pocl_kernel_metadata_t *meta = k->kernel->meta;
++  cl_uint i;
++
++  memcpy (arguments2, k->arguments2, ARGS_SIZE);
++  memcpy (arguments, k->arguments, ARGS_SIZE);
++
++  char *start = local_mem;
++
++  for (i = 0; i < meta->num_args; ++i)
++    {
++      if (ARG_IS_LOCAL (meta->arg_info[i]))
++        {
++          size_t size = k->kernel_args[i].size;
++          if (!k->device->device_alloca_locals)
++            {
++              arguments[i] = &arguments2[i];
++              arguments2[i] = start;
++              start += size;
++              start = align_ptr (start);
++              assert ((size_t) (start - local_mem) <= local_mem_size);
++            }
++          else
++            {
++              /* Local buffers are allocated in the device side work-group
++                 launcher. Let's pass only the sizes of the local args in
++                 the arg buffer. */
++              assert (sizeof (size_t) == sizeof (void *));
++              arguments[i] = (void *)size;
++            }
++        }
++    }
++  if (!k->device->device_alloca_locals)
++    /* Allocate the automatic local buffers which are implemented as implicit
++       extra arguments at the end of the kernel argument list. */
++    for (i = 0; i < meta->num_locals; ++i)
++      {
++        cl_uint j = meta->num_args + i;
++        size_t size = meta->local_sizes[i];
++        arguments[j] = &arguments2[j];
++        arguments2[j] = start;
++        start += size;
++        start = align_ptr (start);
++        assert ((size_t) (start - local_mem) <= local_mem_size);
++      }
++}
++
++/* called from kernel teardown code.
++ * frees the actual arguments, except the local ones. */
++void
++free_kernel_arg_array (kernel_run_command *k)
++{
++  cl_uint i;
++  pocl_kernel_metadata_t *meta = k->kernel->meta;
++  void **arguments = k->arguments;
++  void **arguments2 = k->arguments2;
++
++  for (i = 0; i < meta->num_args; ++i)
++    {
++      if (ARG_IS_LOCAL (meta->arg_info[i]))
++        {
++          if (!k->device->device_alloca_locals)
++            {
++              assert (arguments[i] == NULL);
++              assert (arguments2[i] == NULL);
++            }
++          else
++            {
++              /* Device side local space allocation has deallocation via stack
++                 unwind. */
++            }
++        }
++    }
++
++  POCL_MEM_FREE (k->arguments);
++  POCL_MEM_FREE (k->arguments2);
++}
++
++/* called from each driver thread.
++ * frees the local arguments. */
++void
++free_kernel_arg_array_with_locals (void **arguments, void **arguments2,
++                                   kernel_run_command *k)
++{
++  pocl_kernel_metadata_t *meta = k->kernel->meta;
++  cl_uint i;
++
++  for (i = 0; i < meta->num_args; ++i)
++    {
++      if (ARG_IS_LOCAL (meta->arg_info[i]))
++        {
++          arguments[i] = NULL;
++          arguments2[i] = NULL;
++        }
++    }
++
++  for (i = 0; i < meta->num_locals; ++i)
++    {
++      arguments[meta->num_args + i] = NULL;
++      arguments2[meta->num_args + i] = NULL;
++    }
++}
+diff --git a/lib/CL/devices/proteus/uthash.h b/lib/CL/devices/proteus/uthash.h
+new file mode 100644
+index 00000000..8ab39815
+--- /dev/null
++++ b/lib/CL/devices/proteus/uthash.h
+@@ -0,0 +1,1133 @@
++/*
++Copyright (c) 2003-2020, Troy D. Hanson     http://troydhanson.github.com/uthash/
++All rights reserved.
++
++Redistribution and use in source and binary forms, with or without
++modification, are permitted provided that the following conditions are met:
++
++    * Redistributions of source code must retain the above copyright
++      notice, this list of conditions and the following disclaimer.
++
++THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS
++IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED
++TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A
++PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER
++OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
++EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
++PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
++PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
++LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
++NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
++SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
++*/
++
++#ifndef UTHASH_H
++#define UTHASH_H
++
++#define UTHASH_VERSION 2.2.0
++
++#include <string.h>   /* memcmp, memset, strlen */
++#include <stddef.h>   /* ptrdiff_t */
++#include <stdlib.h>   /* exit */
++
++#if defined(HASH_DEFINE_OWN_STDINT) && HASH_DEFINE_OWN_STDINT
++/* This codepath is provided for backward compatibility, but I plan to remove it. */
++#warning "HASH_DEFINE_OWN_STDINT is deprecated; please use HASH_NO_STDINT instead"
++typedef unsigned int uint32_t;
++typedef unsigned char uint8_t;
++#elif defined(HASH_NO_STDINT) && HASH_NO_STDINT
++#else
++#include <stdint.h>   /* uint8_t, uint32_t */
++#endif
++
++/* These macros use decltype or the earlier __typeof GNU extension.
++   As decltype is only available in newer compilers (VS2010 or gcc 4.3+
++   when compiling c++ source) this code uses whatever method is needed
++   or, for VS2008 where neither is available, uses casting workarounds. */
++#if !defined(DECLTYPE) && !defined(NO_DECLTYPE)
++#if defined(_MSC_VER)   /* MS compiler */
++#if _MSC_VER >= 1600 && defined(__cplusplus)  /* VS2010 or newer in C++ mode */
++#define DECLTYPE(x) (decltype(x))
++#else                   /* VS2008 or older (or VS2010 in C mode) */
++#define NO_DECLTYPE
++#endif
++#elif defined(__BORLANDC__) || defined(__ICCARM__) || defined(__LCC__) || defined(__WATCOMC__)
++#define NO_DECLTYPE
++#else                   /* GNU, Sun and other compilers */
++#define DECLTYPE(x) (__typeof(x))
++#endif
++#endif
++
++#ifdef NO_DECLTYPE
++#define DECLTYPE(x)
++#define DECLTYPE_ASSIGN(dst,src)                                                 \
++do {                                                                             \
++  char **_da_dst = (char**)(&(dst));                                             \
++  *_da_dst = (char*)(src);                                                       \
++} while (0)
++#else
++#define DECLTYPE_ASSIGN(dst,src)                                                 \
++do {                                                                             \
++  (dst) = DECLTYPE(dst)(src);                                                    \
++} while (0)
++#endif
++
++#ifndef uthash_malloc
++#define uthash_malloc(sz) malloc(sz)      /* malloc fcn                      */
++#endif
++#ifndef uthash_free
++#define uthash_free(ptr,sz) free(ptr)     /* free fcn                        */
++#endif
++#ifndef uthash_bzero
++#define uthash_bzero(a,n) memset(a,'\0',n)
++#endif
++#ifndef uthash_strlen
++#define uthash_strlen(s) strlen(s)
++#endif
++
++#ifndef HASH_FUNCTION
++#define HASH_FUNCTION(keyptr,keylen,hashv) HASH_JEN(keyptr, keylen, hashv)
++#endif
++
++#ifndef HASH_KEYCMP
++#define HASH_KEYCMP(a,b,n) memcmp(a,b,n)
++#endif
++
++#ifndef uthash_noexpand_fyi
++#define uthash_noexpand_fyi(tbl)          /* can be defined to log noexpand  */
++#endif
++#ifndef uthash_expand_fyi
++#define uthash_expand_fyi(tbl)            /* can be defined to log expands   */
++#endif
++
++#ifndef HASH_NONFATAL_OOM
++#define HASH_NONFATAL_OOM 0
++#endif
++
++#if HASH_NONFATAL_OOM
++/* malloc failures can be recovered from */
++
++#ifndef uthash_nonfatal_oom
++#define uthash_nonfatal_oom(obj) do {} while (0)    /* non-fatal OOM error */
++#endif
++
++#define HASH_RECORD_OOM(oomed) do { (oomed) = 1; } while (0)
++#define IF_HASH_NONFATAL_OOM(x) x
++
++#else
++/* malloc failures result in lost memory, hash tables are unusable */
++
++#ifndef uthash_fatal
++#define uthash_fatal(msg) exit(-1)        /* fatal OOM error */
++#endif
++
++#define HASH_RECORD_OOM(oomed) uthash_fatal("out of memory")
++#define IF_HASH_NONFATAL_OOM(x)
++
++#endif
++
++/* initial number of buckets */
++#define HASH_INITIAL_NUM_BUCKETS 32U     /* initial number of buckets        */
++#define HASH_INITIAL_NUM_BUCKETS_LOG2 5U /* lg2 of initial number of buckets */
++#define HASH_BKT_CAPACITY_THRESH 10U     /* expand when bucket count reaches */
++
++/* calculate the element whose hash handle address is hhp */
++#define ELMT_FROM_HH(tbl,hhp) ((void*)(((char*)(hhp)) - ((tbl)->hho)))
++/* calculate the hash handle from element address elp */
++#define HH_FROM_ELMT(tbl,elp) ((UT_hash_handle*)(void*)(((char*)(elp)) + ((tbl)->hho)))
++
++#define HASH_ROLLBACK_BKT(hh, head, itemptrhh)                                   \
++do {                                                                             \
++  struct UT_hash_handle *_hd_hh_item = (itemptrhh);                              \
++  unsigned _hd_bkt;                                                              \
++  HASH_TO_BKT(_hd_hh_item->hashv, (head)->hh.tbl->num_buckets, _hd_bkt);         \
++  (head)->hh.tbl->buckets[_hd_bkt].count++;                                      \
++  _hd_hh_item->hh_next = NULL;                                                   \
++  _hd_hh_item->hh_prev = NULL;                                                   \
++} while (0)
++
++#define HASH_VALUE(keyptr,keylen,hashv)                                          \
++do {                                                                             \
++  HASH_FUNCTION(keyptr, keylen, hashv);                                          \
++} while (0)
++
++#define HASH_FIND_BYHASHVALUE(hh,head,keyptr,keylen,hashval,out)                 \
++do {                                                                             \
++  (out) = NULL;                                                                  \
++  if (head) {                                                                    \
++    unsigned _hf_bkt;                                                            \
++    HASH_TO_BKT(hashval, (head)->hh.tbl->num_buckets, _hf_bkt);                  \
++    if (HASH_BLOOM_TEST((head)->hh.tbl, hashval) != 0) {                         \
++      HASH_FIND_IN_BKT((head)->hh.tbl, hh, (head)->hh.tbl->buckets[ _hf_bkt ], keyptr, keylen, hashval, out); \
++    }                                                                            \
++  }                                                                              \
++} while (0)
++
++#define HASH_FIND(hh,head,keyptr,keylen,out)                                     \
++do {                                                                             \
++  (out) = NULL;                                                                  \
++  if (head) {                                                                    \
++    unsigned _hf_hashv;                                                          \
++    HASH_VALUE(keyptr, keylen, _hf_hashv);                                       \
++    HASH_FIND_BYHASHVALUE(hh, head, keyptr, keylen, _hf_hashv, out);             \
++  }                                                                              \
++} while (0)
++
++#ifdef HASH_BLOOM
++#define HASH_BLOOM_BITLEN (1UL << HASH_BLOOM)
++#define HASH_BLOOM_BYTELEN (HASH_BLOOM_BITLEN/8UL) + (((HASH_BLOOM_BITLEN%8UL)!=0UL) ? 1UL : 0UL)
++#define HASH_BLOOM_MAKE(tbl,oomed)                                               \
++do {                                                                             \
++  (tbl)->bloom_nbits = HASH_BLOOM;                                               \
++  (tbl)->bloom_bv = (uint8_t*)uthash_malloc(HASH_BLOOM_BYTELEN);                 \
++  if (!(tbl)->bloom_bv) {                                                        \
++    HASH_RECORD_OOM(oomed);                                                      \
++  } else {                                                                       \
++    uthash_bzero((tbl)->bloom_bv, HASH_BLOOM_BYTELEN);                           \
++    (tbl)->bloom_sig = HASH_BLOOM_SIGNATURE;                                     \
++  }                                                                              \
++} while (0)
++
++#define HASH_BLOOM_FREE(tbl)                                                     \
++do {                                                                             \
++  uthash_free((tbl)->bloom_bv, HASH_BLOOM_BYTELEN);                              \
++} while (0)
++
++#define HASH_BLOOM_BITSET(bv,idx) (bv[(idx)/8U] |= (1U << ((idx)%8U)))
++#define HASH_BLOOM_BITTEST(bv,idx) (bv[(idx)/8U] & (1U << ((idx)%8U)))
++
++#define HASH_BLOOM_ADD(tbl,hashv)                                                \
++  HASH_BLOOM_BITSET((tbl)->bloom_bv, ((hashv) & (uint32_t)((1UL << (tbl)->bloom_nbits) - 1U)))
++
++#define HASH_BLOOM_TEST(tbl,hashv)                                               \
++  HASH_BLOOM_BITTEST((tbl)->bloom_bv, ((hashv) & (uint32_t)((1UL << (tbl)->bloom_nbits) - 1U)))
++
++#else
++#define HASH_BLOOM_MAKE(tbl,oomed)
++#define HASH_BLOOM_FREE(tbl)
++#define HASH_BLOOM_ADD(tbl,hashv)
++#define HASH_BLOOM_TEST(tbl,hashv) (1)
++#define HASH_BLOOM_BYTELEN 0U
++#endif
++
++#define HASH_MAKE_TABLE(hh,head,oomed)                                           \
++do {                                                                             \
++  (head)->hh.tbl = (UT_hash_table*)uthash_malloc(sizeof(UT_hash_table));         \
++  if (!(head)->hh.tbl) {                                                         \
++    HASH_RECORD_OOM(oomed);                                                      \
++  } else {                                                                       \
++    uthash_bzero((head)->hh.tbl, sizeof(UT_hash_table));                         \
++    (head)->hh.tbl->tail = &((head)->hh);                                        \
++    (head)->hh.tbl->num_buckets = HASH_INITIAL_NUM_BUCKETS;                      \
++    (head)->hh.tbl->log2_num_buckets = HASH_INITIAL_NUM_BUCKETS_LOG2;            \
++    (head)->hh.tbl->hho = (char*)(&(head)->hh) - (char*)(head);                  \
++    (head)->hh.tbl->buckets = (UT_hash_bucket*)uthash_malloc(                    \
++        HASH_INITIAL_NUM_BUCKETS * sizeof(struct UT_hash_bucket));               \
++    (head)->hh.tbl->signature = HASH_SIGNATURE;                                  \
++    if (!(head)->hh.tbl->buckets) {                                              \
++      HASH_RECORD_OOM(oomed);                                                    \
++      uthash_free((head)->hh.tbl, sizeof(UT_hash_table));                        \
++    } else {                                                                     \
++      uthash_bzero((head)->hh.tbl->buckets,                                      \
++          HASH_INITIAL_NUM_BUCKETS * sizeof(struct UT_hash_bucket));             \
++      HASH_BLOOM_MAKE((head)->hh.tbl, oomed);                                    \
++      IF_HASH_NONFATAL_OOM(                                                      \
++        if (oomed) {                                                             \
++          uthash_free((head)->hh.tbl->buckets,                                   \
++              HASH_INITIAL_NUM_BUCKETS*sizeof(struct UT_hash_bucket));           \
++          uthash_free((head)->hh.tbl, sizeof(UT_hash_table));                    \
++        }                                                                        \
++      )                                                                          \
++    }                                                                            \
++  }                                                                              \
++} while (0)
++
++#define HASH_REPLACE_BYHASHVALUE_INORDER(hh,head,fieldname,keylen_in,hashval,add,replaced,cmpfcn) \
++do {                                                                             \
++  (replaced) = NULL;                                                             \
++  HASH_FIND_BYHASHVALUE(hh, head, &((add)->fieldname), keylen_in, hashval, replaced); \
++  if (replaced) {                                                                \
++    HASH_DELETE(hh, head, replaced);                                             \
++  }                                                                              \
++  HASH_ADD_KEYPTR_BYHASHVALUE_INORDER(hh, head, &((add)->fieldname), keylen_in, hashval, add, cmpfcn); \
++} while (0)
++
++#define HASH_REPLACE_BYHASHVALUE(hh,head,fieldname,keylen_in,hashval,add,replaced) \
++do {                                                                             \
++  (replaced) = NULL;                                                             \
++  HASH_FIND_BYHASHVALUE(hh, head, &((add)->fieldname), keylen_in, hashval, replaced); \
++  if (replaced) {                                                                \
++    HASH_DELETE(hh, head, replaced);                                             \
++  }                                                                              \
++  HASH_ADD_KEYPTR_BYHASHVALUE(hh, head, &((add)->fieldname), keylen_in, hashval, add); \
++} while (0)
++
++#define HASH_REPLACE(hh,head,fieldname,keylen_in,add,replaced)                   \
++do {                                                                             \
++  unsigned _hr_hashv;                                                            \
++  HASH_VALUE(&((add)->fieldname), keylen_in, _hr_hashv);                         \
++  HASH_REPLACE_BYHASHVALUE(hh, head, fieldname, keylen_in, _hr_hashv, add, replaced); \
++} while (0)
++
++#define HASH_REPLACE_INORDER(hh,head,fieldname,keylen_in,add,replaced,cmpfcn)    \
++do {                                                                             \
++  unsigned _hr_hashv;                                                            \
++  HASH_VALUE(&((add)->fieldname), keylen_in, _hr_hashv);                         \
++  HASH_REPLACE_BYHASHVALUE_INORDER(hh, head, fieldname, keylen_in, _hr_hashv, add, replaced, cmpfcn); \
++} while (0)
++
++#define HASH_APPEND_LIST(hh, head, add)                                          \
++do {                                                                             \
++  (add)->hh.next = NULL;                                                         \
++  (add)->hh.prev = ELMT_FROM_HH((head)->hh.tbl, (head)->hh.tbl->tail);           \
++  (head)->hh.tbl->tail->next = (add);                                            \
++  (head)->hh.tbl->tail = &((add)->hh);                                           \
++} while (0)
++
++#define HASH_AKBI_INNER_LOOP(hh,head,add,cmpfcn)                                 \
++do {                                                                             \
++  do {                                                                           \
++    if (cmpfcn(DECLTYPE(head)(_hs_iter), add) > 0) {                             \
++      break;                                                                     \
++    }                                                                            \
++  } while ((_hs_iter = HH_FROM_ELMT((head)->hh.tbl, _hs_iter)->next));           \
++} while (0)
++
++#ifdef NO_DECLTYPE
++#undef HASH_AKBI_INNER_LOOP
++#define HASH_AKBI_INNER_LOOP(hh,head,add,cmpfcn)                                 \
++do {                                                                             \
++  char *_hs_saved_head = (char*)(head);                                          \
++  do {                                                                           \
++    DECLTYPE_ASSIGN(head, _hs_iter);                                             \
++    if (cmpfcn(head, add) > 0) {                                                 \
++      DECLTYPE_ASSIGN(head, _hs_saved_head);                                     \
++      break;                                                                     \
++    }                                                                            \
++    DECLTYPE_ASSIGN(head, _hs_saved_head);                                       \
++  } while ((_hs_iter = HH_FROM_ELMT((head)->hh.tbl, _hs_iter)->next));           \
++} while (0)
++#endif
++
++#if HASH_NONFATAL_OOM
++
++#define HASH_ADD_TO_TABLE(hh,head,keyptr,keylen_in,hashval,add,oomed)            \
++do {                                                                             \
++  if (!(oomed)) {                                                                \
++    unsigned _ha_bkt;                                                            \
++    (head)->hh.tbl->num_items++;                                                 \
++    HASH_TO_BKT(hashval, (head)->hh.tbl->num_buckets, _ha_bkt);                  \
++    HASH_ADD_TO_BKT((head)->hh.tbl->buckets[_ha_bkt], hh, &(add)->hh, oomed);    \
++    if (oomed) {                                                                 \
++      HASH_ROLLBACK_BKT(hh, head, &(add)->hh);                                   \
++      HASH_DELETE_HH(hh, head, &(add)->hh);                                      \
++      (add)->hh.tbl = NULL;                                                      \
++      uthash_nonfatal_oom(add);                                                  \
++    } else {                                                                     \
++      HASH_BLOOM_ADD((head)->hh.tbl, hashval);                                   \
++      HASH_EMIT_KEY(hh, head, keyptr, keylen_in);                                \
++    }                                                                            \
++  } else {                                                                       \
++    (add)->hh.tbl = NULL;                                                        \
++    uthash_nonfatal_oom(add);                                                    \
++  }                                                                              \
++} while (0)
++
++#else
++
++#define HASH_ADD_TO_TABLE(hh,head,keyptr,keylen_in,hashval,add,oomed)            \
++do {                                                                             \
++  unsigned _ha_bkt;                                                              \
++  (head)->hh.tbl->num_items++;                                                   \
++  HASH_TO_BKT(hashval, (head)->hh.tbl->num_buckets, _ha_bkt);                    \
++  HASH_ADD_TO_BKT((head)->hh.tbl->buckets[_ha_bkt], hh, &(add)->hh, oomed);      \
++  HASH_BLOOM_ADD((head)->hh.tbl, hashval);                                       \
++  HASH_EMIT_KEY(hh, head, keyptr, keylen_in);                                    \
++} while (0)
++
++#endif
++
++
++#define HASH_ADD_KEYPTR_BYHASHVALUE_INORDER(hh,head,keyptr,keylen_in,hashval,add,cmpfcn) \
++do {                                                                             \
++  IF_HASH_NONFATAL_OOM( int _ha_oomed = 0; )                                     \
++  (add)->hh.hashv = (hashval);                                                   \
++  (add)->hh.key = (char*) (keyptr);                                              \
++  (add)->hh.keylen = (unsigned) (keylen_in);                                     \
++  if (!(head)) {                                                                 \
++    (add)->hh.next = NULL;                                                       \
++    (add)->hh.prev = NULL;                                                       \
++    HASH_MAKE_TABLE(hh, add, _ha_oomed);                                         \
++    IF_HASH_NONFATAL_OOM( if (!_ha_oomed) { )                                    \
++      (head) = (add);                                                            \
++    IF_HASH_NONFATAL_OOM( } )                                                    \
++  } else {                                                                       \
++    void *_hs_iter = (head);                                                     \
++    (add)->hh.tbl = (head)->hh.tbl;                                              \
++    HASH_AKBI_INNER_LOOP(hh, head, add, cmpfcn);                                 \
++    if (_hs_iter) {                                                              \
++      (add)->hh.next = _hs_iter;                                                 \
++      if (((add)->hh.prev = HH_FROM_ELMT((head)->hh.tbl, _hs_iter)->prev)) {     \
++        HH_FROM_ELMT((head)->hh.tbl, (add)->hh.prev)->next = (add);              \
++      } else {                                                                   \
++        (head) = (add);                                                          \
++      }                                                                          \
++      HH_FROM_ELMT((head)->hh.tbl, _hs_iter)->prev = (add);                      \
++    } else {                                                                     \
++      HASH_APPEND_LIST(hh, head, add);                                           \
++    }                                                                            \
++  }                                                                              \
++  HASH_ADD_TO_TABLE(hh, head, keyptr, keylen_in, hashval, add, _ha_oomed);       \
++  HASH_FSCK(hh, head, "HASH_ADD_KEYPTR_BYHASHVALUE_INORDER");                    \
++} while (0)
++
++#define HASH_ADD_KEYPTR_INORDER(hh,head,keyptr,keylen_in,add,cmpfcn)             \
++do {                                                                             \
++  unsigned _hs_hashv;                                                            \
++  HASH_VALUE(keyptr, keylen_in, _hs_hashv);                                      \
++  HASH_ADD_KEYPTR_BYHASHVALUE_INORDER(hh, head, keyptr, keylen_in, _hs_hashv, add, cmpfcn); \
++} while (0)
++
++#define HASH_ADD_BYHASHVALUE_INORDER(hh,head,fieldname,keylen_in,hashval,add,cmpfcn) \
++  HASH_ADD_KEYPTR_BYHASHVALUE_INORDER(hh, head, &((add)->fieldname), keylen_in, hashval, add, cmpfcn)
++
++#define HASH_ADD_INORDER(hh,head,fieldname,keylen_in,add,cmpfcn)                 \
++  HASH_ADD_KEYPTR_INORDER(hh, head, &((add)->fieldname), keylen_in, add, cmpfcn)
++
++#define HASH_ADD_KEYPTR_BYHASHVALUE(hh,head,keyptr,keylen_in,hashval,add)        \
++do {                                                                             \
++  IF_HASH_NONFATAL_OOM( int _ha_oomed = 0; )                                     \
++  (add)->hh.hashv = (hashval);                                                   \
++  (add)->hh.key = (const void*) (keyptr);                                        \
++  (add)->hh.keylen = (unsigned) (keylen_in);                                     \
++  if (!(head)) {                                                                 \
++    (add)->hh.next = NULL;                                                       \
++    (add)->hh.prev = NULL;                                                       \
++    HASH_MAKE_TABLE(hh, add, _ha_oomed);                                         \
++    IF_HASH_NONFATAL_OOM( if (!_ha_oomed) { )                                    \
++      (head) = (add);                                                            \
++    IF_HASH_NONFATAL_OOM( } )                                                    \
++  } else {                                                                       \
++    (add)->hh.tbl = (head)->hh.tbl;                                              \
++    HASH_APPEND_LIST(hh, head, add);                                             \
++  }                                                                              \
++  HASH_ADD_TO_TABLE(hh, head, keyptr, keylen_in, hashval, add, _ha_oomed);       \
++  HASH_FSCK(hh, head, "HASH_ADD_KEYPTR_BYHASHVALUE");                            \
++} while (0)
++
++#define HASH_ADD_KEYPTR(hh,head,keyptr,keylen_in,add)                            \
++do {                                                                             \
++  unsigned _ha_hashv;                                                            \
++  HASH_VALUE(keyptr, keylen_in, _ha_hashv);                                      \
++  HASH_ADD_KEYPTR_BYHASHVALUE(hh, head, keyptr, keylen_in, _ha_hashv, add);      \
++} while (0)
++
++#define HASH_ADD_BYHASHVALUE(hh,head,fieldname,keylen_in,hashval,add)            \
++  HASH_ADD_KEYPTR_BYHASHVALUE(hh, head, &((add)->fieldname), keylen_in, hashval, add)
++
++#define HASH_ADD(hh,head,fieldname,keylen_in,add)                                \
++  HASH_ADD_KEYPTR(hh, head, &((add)->fieldname), keylen_in, add)
++
++#define HASH_TO_BKT(hashv,num_bkts,bkt)                                          \
++do {                                                                             \
++  bkt = ((hashv) & ((num_bkts) - 1U));                                           \
++} while (0)
++
++/* delete "delptr" from the hash table.
++ * "the usual" patch-up process for the app-order doubly-linked-list.
++ * The use of _hd_hh_del below deserves special explanation.
++ * These used to be expressed using (delptr) but that led to a bug
++ * if someone used the same symbol for the head and deletee, like
++ *  HASH_DELETE(hh,users,users);
++ * We want that to work, but by changing the head (users) below
++ * we were forfeiting our ability to further refer to the deletee (users)
++ * in the patch-up process. Solution: use scratch space to
++ * copy the deletee pointer, then the latter references are via that
++ * scratch pointer rather than through the repointed (users) symbol.
++ */
++#define HASH_DELETE(hh,head,delptr)                                              \
++    HASH_DELETE_HH(hh, head, &(delptr)->hh)
++
++#define HASH_DELETE_HH(hh,head,delptrhh)                                         \
++do {                                                                             \
++  struct UT_hash_handle *_hd_hh_del = (delptrhh);                                \
++  if ((_hd_hh_del->prev == NULL) && (_hd_hh_del->next == NULL)) {                \
++    HASH_BLOOM_FREE((head)->hh.tbl);                                             \
++    uthash_free((head)->hh.tbl->buckets,                                         \
++                (head)->hh.tbl->num_buckets * sizeof(struct UT_hash_bucket));    \
++    uthash_free((head)->hh.tbl, sizeof(UT_hash_table));                          \
++    (head) = NULL;                                                               \
++  } else {                                                                       \
++    unsigned _hd_bkt;                                                            \
++    if (_hd_hh_del == (head)->hh.tbl->tail) {                                    \
++      (head)->hh.tbl->tail = HH_FROM_ELMT((head)->hh.tbl, _hd_hh_del->prev);     \
++    }                                                                            \
++    if (_hd_hh_del->prev != NULL) {                                              \
++      HH_FROM_ELMT((head)->hh.tbl, _hd_hh_del->prev)->next = _hd_hh_del->next;   \
++    } else {                                                                     \
++      DECLTYPE_ASSIGN(head, _hd_hh_del->next);                                   \
++    }                                                                            \
++    if (_hd_hh_del->next != NULL) {                                              \
++      HH_FROM_ELMT((head)->hh.tbl, _hd_hh_del->next)->prev = _hd_hh_del->prev;   \
++    }                                                                            \
++    HASH_TO_BKT(_hd_hh_del->hashv, (head)->hh.tbl->num_buckets, _hd_bkt);        \
++    HASH_DEL_IN_BKT((head)->hh.tbl->buckets[_hd_bkt], _hd_hh_del);               \
++    (head)->hh.tbl->num_items--;                                                 \
++  }                                                                              \
++  HASH_FSCK(hh, head, "HASH_DELETE_HH");                                         \
++} while (0)
++
++/* convenience forms of HASH_FIND/HASH_ADD/HASH_DEL */
++#define HASH_FIND_STR(head,findstr,out)                                          \
++do {                                                                             \
++    unsigned _uthash_hfstr_keylen = (unsigned)uthash_strlen(findstr);            \
++    HASH_FIND(hh, head, findstr, _uthash_hfstr_keylen, out);                     \
++} while (0)
++#define HASH_ADD_STR(head,strfield,add)                                          \
++do {                                                                             \
++    unsigned _uthash_hastr_keylen = (unsigned)uthash_strlen((add)->strfield);    \
++    HASH_ADD(hh, head, strfield[0], _uthash_hastr_keylen, add);                  \
++} while (0)
++#define HASH_REPLACE_STR(head,strfield,add,replaced)                             \
++do {                                                                             \
++    unsigned _uthash_hrstr_keylen = (unsigned)uthash_strlen((add)->strfield);    \
++    HASH_REPLACE(hh, head, strfield[0], _uthash_hrstr_keylen, add, replaced);    \
++} while (0)
++#define HASH_FIND_INT(head,findint,out)                                          \
++    HASH_FIND(hh,head,findint,sizeof(int),out)
++#define HASH_ADD_INT(head,intfield,add)                                          \
++    HASH_ADD(hh,head,intfield,sizeof(int),add)
++#define HASH_REPLACE_INT(head,intfield,add,replaced)                             \
++    HASH_REPLACE(hh,head,intfield,sizeof(int),add,replaced)
++#define HASH_FIND_PTR(head,findptr,out)                                          \
++    HASH_FIND(hh,head,findptr,sizeof(void *),out)
++#define HASH_ADD_PTR(head,ptrfield,add)                                          \
++    HASH_ADD(hh,head,ptrfield,sizeof(void *),add)
++#define HASH_REPLACE_PTR(head,ptrfield,add,replaced)                             \
++    HASH_REPLACE(hh,head,ptrfield,sizeof(void *),add,replaced)
++#define HASH_DEL(head,delptr)                                                    \
++    HASH_DELETE(hh,head,delptr)
++
++/* HASH_FSCK checks hash integrity on every add/delete when HASH_DEBUG is defined.
++ * This is for uthash developer only; it compiles away if HASH_DEBUG isn't defined.
++ */
++#ifdef HASH_DEBUG
++#include <stdio.h>   /* fprintf, stderr */
++#define HASH_OOPS(...) do { fprintf(stderr, __VA_ARGS__); exit(-1); } while (0)
++#define HASH_FSCK(hh,head,where)                                                 \
++do {                                                                             \
++  struct UT_hash_handle *_thh;                                                   \
++  if (head) {                                                                    \
++    unsigned _bkt_i;                                                             \
++    unsigned _count = 0;                                                         \
++    char *_prev;                                                                 \
++    for (_bkt_i = 0; _bkt_i < (head)->hh.tbl->num_buckets; ++_bkt_i) {           \
++      unsigned _bkt_count = 0;                                                   \
++      _thh = (head)->hh.tbl->buckets[_bkt_i].hh_head;                            \
++      _prev = NULL;                                                              \
++      while (_thh) {                                                             \
++        if (_prev != (char*)(_thh->hh_prev)) {                                   \
++          HASH_OOPS("%s: invalid hh_prev %p, actual %p\n",                       \
++              (where), (void*)_thh->hh_prev, (void*)_prev);                      \
++        }                                                                        \
++        _bkt_count++;                                                            \
++        _prev = (char*)(_thh);                                                   \
++        _thh = _thh->hh_next;                                                    \
++      }                                                                          \
++      _count += _bkt_count;                                                      \
++      if ((head)->hh.tbl->buckets[_bkt_i].count !=  _bkt_count) {                \
++        HASH_OOPS("%s: invalid bucket count %u, actual %u\n",                    \
++            (where), (head)->hh.tbl->buckets[_bkt_i].count, _bkt_count);         \
++      }                                                                          \
++    }                                                                            \
++    if (_count != (head)->hh.tbl->num_items) {                                   \
++      HASH_OOPS("%s: invalid hh item count %u, actual %u\n",                     \
++          (where), (head)->hh.tbl->num_items, _count);                           \
++    }                                                                            \
++    _count = 0;                                                                  \
++    _prev = NULL;                                                                \
++    _thh =  &(head)->hh;                                                         \
++    while (_thh) {                                                               \
++      _count++;                                                                  \
++      if (_prev != (char*)_thh->prev) {                                          \
++        HASH_OOPS("%s: invalid prev %p, actual %p\n",                            \
++            (where), (void*)_thh->prev, (void*)_prev);                           \
++      }                                                                          \
++      _prev = (char*)ELMT_FROM_HH((head)->hh.tbl, _thh);                         \
++      _thh = (_thh->next ? HH_FROM_ELMT((head)->hh.tbl, _thh->next) : NULL);     \
++    }                                                                            \
++    if (_count != (head)->hh.tbl->num_items) {                                   \
++      HASH_OOPS("%s: invalid app item count %u, actual %u\n",                    \
++          (where), (head)->hh.tbl->num_items, _count);                           \
++    }                                                                            \
++  }                                                                              \
++} while (0)
++#else
++#define HASH_FSCK(hh,head,where)
++#endif
++
++/* When compiled with -DHASH_EMIT_KEYS, length-prefixed keys are emitted to
++ * the descriptor to which this macro is defined for tuning the hash function.
++ * The app can #include <unistd.h> to get the prototype for write(2). */
++#ifdef HASH_EMIT_KEYS
++#define HASH_EMIT_KEY(hh,head,keyptr,fieldlen)                                   \
++do {                                                                             \
++  unsigned _klen = fieldlen;                                                     \
++  write(HASH_EMIT_KEYS, &_klen, sizeof(_klen));                                  \
++  write(HASH_EMIT_KEYS, keyptr, (unsigned long)fieldlen);                        \
++} while (0)
++#else
++#define HASH_EMIT_KEY(hh,head,keyptr,fieldlen)
++#endif
++
++/* The Bernstein hash function, used in Perl prior to v5.6. Note (x<<5+x)=x*33. */
++#define HASH_BER(key,keylen,hashv)                                               \
++do {                                                                             \
++  unsigned _hb_keylen = (unsigned)keylen;                                        \
++  const unsigned char *_hb_key = (const unsigned char*)(key);                    \
++  (hashv) = 0;                                                                   \
++  while (_hb_keylen-- != 0U) {                                                   \
++    (hashv) = (((hashv) << 5) + (hashv)) + *_hb_key++;                           \
++  }                                                                              \
++} while (0)
++
++
++/* SAX/FNV/OAT/JEN hash functions are macro variants of those listed at
++ * http://eternallyconfuzzled.com/tuts/algorithms/jsw_tut_hashing.aspx */
++#define HASH_SAX(key,keylen,hashv)                                               \
++do {                                                                             \
++  unsigned _sx_i;                                                                \
++  const unsigned char *_hs_key = (const unsigned char*)(key);                    \
++  hashv = 0;                                                                     \
++  for (_sx_i=0; _sx_i < keylen; _sx_i++) {                                       \
++    hashv ^= (hashv << 5) + (hashv >> 2) + _hs_key[_sx_i];                       \
++  }                                                                              \
++} while (0)
++/* FNV-1a variation */
++#define HASH_FNV(key,keylen,hashv)                                               \
++do {                                                                             \
++  unsigned _fn_i;                                                                \
++  const unsigned char *_hf_key = (const unsigned char*)(key);                    \
++  (hashv) = 2166136261U;                                                         \
++  for (_fn_i=0; _fn_i < keylen; _fn_i++) {                                       \
++    hashv = hashv ^ _hf_key[_fn_i];                                              \
++    hashv = hashv * 16777619U;                                                   \
++  }                                                                              \
++} while (0)
++
++#define HASH_OAT(key,keylen,hashv)                                               \
++do {                                                                             \
++  unsigned _ho_i;                                                                \
++  const unsigned char *_ho_key=(const unsigned char*)(key);                      \
++  hashv = 0;                                                                     \
++  for(_ho_i=0; _ho_i < keylen; _ho_i++) {                                        \
++      hashv += _ho_key[_ho_i];                                                   \
++      hashv += (hashv << 10);                                                    \
++      hashv ^= (hashv >> 6);                                                     \
++  }                                                                              \
++  hashv += (hashv << 3);                                                         \
++  hashv ^= (hashv >> 11);                                                        \
++  hashv += (hashv << 15);                                                        \
++} while (0)
++
++#define HASH_JEN_MIX(a,b,c)                                                      \
++do {                                                                             \
++  a -= b; a -= c; a ^= ( c >> 13 );                                              \
++  b -= c; b -= a; b ^= ( a << 8 );                                               \
++  c -= a; c -= b; c ^= ( b >> 13 );                                              \
++  a -= b; a -= c; a ^= ( c >> 12 );                                              \
++  b -= c; b -= a; b ^= ( a << 16 );                                              \
++  c -= a; c -= b; c ^= ( b >> 5 );                                               \
++  a -= b; a -= c; a ^= ( c >> 3 );                                               \
++  b -= c; b -= a; b ^= ( a << 10 );                                              \
++  c -= a; c -= b; c ^= ( b >> 15 );                                              \
++} while (0)
++
++#define HASH_JEN(key,keylen,hashv)                                               \
++do {                                                                             \
++  unsigned _hj_i,_hj_j,_hj_k;                                                    \
++  unsigned const char *_hj_key=(unsigned const char*)(key);                      \
++  hashv = 0xfeedbeefu;                                                           \
++  _hj_i = _hj_j = 0x9e3779b9u;                                                   \
++  _hj_k = (unsigned)(keylen);                                                    \
++  while (_hj_k >= 12U) {                                                         \
++    _hj_i +=    (_hj_key[0] + ( (unsigned)_hj_key[1] << 8 )                      \
++        + ( (unsigned)_hj_key[2] << 16 )                                         \
++        + ( (unsigned)_hj_key[3] << 24 ) );                                      \
++    _hj_j +=    (_hj_key[4] + ( (unsigned)_hj_key[5] << 8 )                      \
++        + ( (unsigned)_hj_key[6] << 16 )                                         \
++        + ( (unsigned)_hj_key[7] << 24 ) );                                      \
++    hashv += (_hj_key[8] + ( (unsigned)_hj_key[9] << 8 )                         \
++        + ( (unsigned)_hj_key[10] << 16 )                                        \
++        + ( (unsigned)_hj_key[11] << 24 ) );                                     \
++                                                                                 \
++     HASH_JEN_MIX(_hj_i, _hj_j, hashv);                                          \
++                                                                                 \
++     _hj_key += 12;                                                              \
++     _hj_k -= 12U;                                                               \
++  }                                                                              \
++  hashv += (unsigned)(keylen);                                                   \
++  switch ( _hj_k ) {                                                             \
++    case 11: hashv += ( (unsigned)_hj_key[10] << 24 ); /* FALLTHROUGH */         \
++    case 10: hashv += ( (unsigned)_hj_key[9] << 16 );  /* FALLTHROUGH */         \
++    case 9:  hashv += ( (unsigned)_hj_key[8] << 8 );   /* FALLTHROUGH */         \
++    case 8:  _hj_j += ( (unsigned)_hj_key[7] << 24 );  /* FALLTHROUGH */         \
++    case 7:  _hj_j += ( (unsigned)_hj_key[6] << 16 );  /* FALLTHROUGH */         \
++    case 6:  _hj_j += ( (unsigned)_hj_key[5] << 8 );   /* FALLTHROUGH */         \
++    case 5:  _hj_j += _hj_key[4];                      /* FALLTHROUGH */         \
++    case 4:  _hj_i += ( (unsigned)_hj_key[3] << 24 );  /* FALLTHROUGH */         \
++    case 3:  _hj_i += ( (unsigned)_hj_key[2] << 16 );  /* FALLTHROUGH */         \
++    case 2:  _hj_i += ( (unsigned)_hj_key[1] << 8 );   /* FALLTHROUGH */         \
++    case 1:  _hj_i += _hj_key[0];                                                \
++  }                                                                              \
++  HASH_JEN_MIX(_hj_i, _hj_j, hashv);                                             \
++} while (0)
++
++/* The Paul Hsieh hash function */
++#undef get16bits
++#if (defined(__GNUC__) && defined(__i386__)) || defined(__WATCOMC__)             \
++  || defined(_MSC_VER) || defined (__BORLANDC__) || defined (__TURBOC__)
++#define get16bits(d) (*((const uint16_t *) (d)))
++#endif
++
++#if !defined (get16bits)
++#define get16bits(d) ((((uint32_t)(((const uint8_t *)(d))[1])) << 8)             \
++                       +(uint32_t)(((const uint8_t *)(d))[0]) )
++#endif
++#define HASH_SFH(key,keylen,hashv)                                               \
++do {                                                                             \
++  unsigned const char *_sfh_key=(unsigned const char*)(key);                     \
++  uint32_t _sfh_tmp, _sfh_len = (uint32_t)keylen;                                \
++                                                                                 \
++  unsigned _sfh_rem = _sfh_len & 3U;                                             \
++  _sfh_len >>= 2;                                                                \
++  hashv = 0xcafebabeu;                                                           \
++                                                                                 \
++  /* Main loop */                                                                \
++  for (;_sfh_len > 0U; _sfh_len--) {                                             \
++    hashv    += get16bits (_sfh_key);                                            \
++    _sfh_tmp  = ((uint32_t)(get16bits (_sfh_key+2)) << 11) ^ hashv;              \
++    hashv     = (hashv << 16) ^ _sfh_tmp;                                        \
++    _sfh_key += 2U*sizeof (uint16_t);                                            \
++    hashv    += hashv >> 11;                                                     \
++  }                                                                              \
++                                                                                 \
++  /* Handle end cases */                                                         \
++  switch (_sfh_rem) {                                                            \
++    case 3: hashv += get16bits (_sfh_key);                                       \
++            hashv ^= hashv << 16;                                                \
++            hashv ^= (uint32_t)(_sfh_key[sizeof (uint16_t)]) << 18;              \
++            hashv += hashv >> 11;                                                \
++            break;                                                               \
++    case 2: hashv += get16bits (_sfh_key);                                       \
++            hashv ^= hashv << 11;                                                \
++            hashv += hashv >> 17;                                                \
++            break;                                                               \
++    case 1: hashv += *_sfh_key;                                                  \
++            hashv ^= hashv << 10;                                                \
++            hashv += hashv >> 1;                                                 \
++  }                                                                              \
++                                                                                 \
++  /* Force "avalanching" of final 127 bits */                                    \
++  hashv ^= hashv << 3;                                                           \
++  hashv += hashv >> 5;                                                           \
++  hashv ^= hashv << 4;                                                           \
++  hashv += hashv >> 17;                                                          \
++  hashv ^= hashv << 25;                                                          \
++  hashv += hashv >> 6;                                                           \
++} while (0)
++
++/* iterate over items in a known bucket to find desired item */
++#define HASH_FIND_IN_BKT(tbl,hh,head,keyptr,keylen_in,hashval,out)               \
++do {                                                                             \
++  if ((head).hh_head != NULL) {                                                  \
++    DECLTYPE_ASSIGN(out, ELMT_FROM_HH(tbl, (head).hh_head));                     \
++  } else {                                                                       \
++    (out) = NULL;                                                                \
++  }                                                                              \
++  while ((out) != NULL) {                                                        \
++    if ((out)->hh.hashv == (hashval) && (out)->hh.keylen == (keylen_in)) {       \
++      if (HASH_KEYCMP((out)->hh.key, keyptr, keylen_in) == 0) {                  \
++        break;                                                                   \
++      }                                                                          \
++    }                                                                            \
++    if ((out)->hh.hh_next != NULL) {                                             \
++      DECLTYPE_ASSIGN(out, ELMT_FROM_HH(tbl, (out)->hh.hh_next));                \
++    } else {                                                                     \
++      (out) = NULL;                                                              \
++    }                                                                            \
++  }                                                                              \
++} while (0)
++
++/* add an item to a bucket  */
++#define HASH_ADD_TO_BKT(head,hh,addhh,oomed)                                     \
++do {                                                                             \
++  UT_hash_bucket *_ha_head = &(head);                                            \
++  _ha_head->count++;                                                             \
++  (addhh)->hh_next = _ha_head->hh_head;                                          \
++  (addhh)->hh_prev = NULL;                                                       \
++  if (_ha_head->hh_head != NULL) {                                               \
++    _ha_head->hh_head->hh_prev = (addhh);                                        \
++  }                                                                              \
++  _ha_head->hh_head = (addhh);                                                   \
++  if ((_ha_head->count >= ((_ha_head->expand_mult + 1U) * HASH_BKT_CAPACITY_THRESH)) \
++      && !(addhh)->tbl->noexpand) {                                              \
++    HASH_EXPAND_BUCKETS(addhh,(addhh)->tbl, oomed);                              \
++    IF_HASH_NONFATAL_OOM(                                                        \
++      if (oomed) {                                                               \
++        HASH_DEL_IN_BKT(head,addhh);                                             \
++      }                                                                          \
++    )                                                                            \
++  }                                                                              \
++} while (0)
++
++/* remove an item from a given bucket */
++#define HASH_DEL_IN_BKT(head,delhh)                                              \
++do {                                                                             \
++  UT_hash_bucket *_hd_head = &(head);                                            \
++  _hd_head->count--;                                                             \
++  if (_hd_head->hh_head == (delhh)) {                                            \
++    _hd_head->hh_head = (delhh)->hh_next;                                        \
++  }                                                                              \
++  if ((delhh)->hh_prev) {                                                        \
++    (delhh)->hh_prev->hh_next = (delhh)->hh_next;                                \
++  }                                                                              \
++  if ((delhh)->hh_next) {                                                        \
++    (delhh)->hh_next->hh_prev = (delhh)->hh_prev;                                \
++  }                                                                              \
++} while (0)
++
++/* Bucket expansion has the effect of doubling the number of buckets
++ * and redistributing the items into the new buckets. Ideally the
++ * items will distribute more or less evenly into the new buckets
++ * (the extent to which this is true is a measure of the quality of
++ * the hash function as it applies to the key domain).
++ *
++ * With the items distributed into more buckets, the chain length
++ * (item count) in each bucket is reduced. Thus by expanding buckets
++ * the hash keeps a bound on the chain length. This bounded chain
++ * length is the essence of how a hash provides constant time lookup.
++ *
++ * The calculation of tbl->ideal_chain_maxlen below deserves some
++ * explanation. First, keep in mind that we're calculating the ideal
++ * maximum chain length based on the *new* (doubled) bucket count.
++ * In fractions this is just n/b (n=number of items,b=new num buckets).
++ * Since the ideal chain length is an integer, we want to calculate
++ * ceil(n/b). We don't depend on floating point arithmetic in this
++ * hash, so to calculate ceil(n/b) with integers we could write
++ *
++ *      ceil(n/b) = (n/b) + ((n%b)?1:0)
++ *
++ * and in fact a previous version of this hash did just that.
++ * But now we have improved things a bit by recognizing that b is
++ * always a power of two. We keep its base 2 log handy (call it lb),
++ * so now we can write this with a bit shift and logical AND:
++ *
++ *      ceil(n/b) = (n>>lb) + ( (n & (b-1)) ? 1:0)
++ *
++ */
++#define HASH_EXPAND_BUCKETS(hh,tbl,oomed)                                        \
++do {                                                                             \
++  unsigned _he_bkt;                                                              \
++  unsigned _he_bkt_i;                                                            \
++  struct UT_hash_handle *_he_thh, *_he_hh_nxt;                                   \
++  UT_hash_bucket *_he_new_buckets, *_he_newbkt;                                  \
++  _he_new_buckets = (UT_hash_bucket*)uthash_malloc(                              \
++           sizeof(struct UT_hash_bucket) * (tbl)->num_buckets * 2U);             \
++  if (!_he_new_buckets) {                                                        \
++    HASH_RECORD_OOM(oomed);                                                      \
++  } else {                                                                       \
++    uthash_bzero(_he_new_buckets,                                                \
++        sizeof(struct UT_hash_bucket) * (tbl)->num_buckets * 2U);                \
++    (tbl)->ideal_chain_maxlen =                                                  \
++       ((tbl)->num_items >> ((tbl)->log2_num_buckets+1U)) +                      \
++       ((((tbl)->num_items & (((tbl)->num_buckets*2U)-1U)) != 0U) ? 1U : 0U);    \
++    (tbl)->nonideal_items = 0;                                                   \
++    for (_he_bkt_i = 0; _he_bkt_i < (tbl)->num_buckets; _he_bkt_i++) {           \
++      _he_thh = (tbl)->buckets[ _he_bkt_i ].hh_head;                             \
++      while (_he_thh != NULL) {                                                  \
++        _he_hh_nxt = _he_thh->hh_next;                                           \
++        HASH_TO_BKT(_he_thh->hashv, (tbl)->num_buckets * 2U, _he_bkt);           \
++        _he_newbkt = &(_he_new_buckets[_he_bkt]);                                \
++        if (++(_he_newbkt->count) > (tbl)->ideal_chain_maxlen) {                 \
++          (tbl)->nonideal_items++;                                               \
++          if (_he_newbkt->count > _he_newbkt->expand_mult * (tbl)->ideal_chain_maxlen) { \
++            _he_newbkt->expand_mult++;                                           \
++          }                                                                      \
++        }                                                                        \
++        _he_thh->hh_prev = NULL;                                                 \
++        _he_thh->hh_next = _he_newbkt->hh_head;                                  \
++        if (_he_newbkt->hh_head != NULL) {                                       \
++          _he_newbkt->hh_head->hh_prev = _he_thh;                                \
++        }                                                                        \
++        _he_newbkt->hh_head = _he_thh;                                           \
++        _he_thh = _he_hh_nxt;                                                    \
++      }                                                                          \
++    }                                                                            \
++    uthash_free((tbl)->buckets, (tbl)->num_buckets * sizeof(struct UT_hash_bucket)); \
++    (tbl)->num_buckets *= 2U;                                                    \
++    (tbl)->log2_num_buckets++;                                                   \
++    (tbl)->buckets = _he_new_buckets;                                            \
++    (tbl)->ineff_expands = ((tbl)->nonideal_items > ((tbl)->num_items >> 1)) ?   \
++        ((tbl)->ineff_expands+1U) : 0U;                                          \
++    if ((tbl)->ineff_expands > 1U) {                                             \
++      (tbl)->noexpand = 1;                                                       \
++      uthash_noexpand_fyi(tbl);                                                  \
++    }                                                                            \
++    uthash_expand_fyi(tbl);                                                      \
++  }                                                                              \
++} while (0)
++
++
++/* This is an adaptation of Simon Tatham's O(n log(n)) mergesort */
++/* Note that HASH_SORT assumes the hash handle name to be hh.
++ * HASH_SRT was added to allow the hash handle name to be passed in. */
++#define HASH_SORT(head,cmpfcn) HASH_SRT(hh,head,cmpfcn)
++#define HASH_SRT(hh,head,cmpfcn)                                                 \
++do {                                                                             \
++  unsigned _hs_i;                                                                \
++  unsigned _hs_looping,_hs_nmerges,_hs_insize,_hs_psize,_hs_qsize;               \
++  struct UT_hash_handle *_hs_p, *_hs_q, *_hs_e, *_hs_list, *_hs_tail;            \
++  if (head != NULL) {                                                            \
++    _hs_insize = 1;                                                              \
++    _hs_looping = 1;                                                             \
++    _hs_list = &((head)->hh);                                                    \
++    while (_hs_looping != 0U) {                                                  \
++      _hs_p = _hs_list;                                                          \
++      _hs_list = NULL;                                                           \
++      _hs_tail = NULL;                                                           \
++      _hs_nmerges = 0;                                                           \
++      while (_hs_p != NULL) {                                                    \
++        _hs_nmerges++;                                                           \
++        _hs_q = _hs_p;                                                           \
++        _hs_psize = 0;                                                           \
++        for (_hs_i = 0; _hs_i < _hs_insize; ++_hs_i) {                           \
++          _hs_psize++;                                                           \
++          _hs_q = ((_hs_q->next != NULL) ?                                       \
++            HH_FROM_ELMT((head)->hh.tbl, _hs_q->next) : NULL);                   \
++          if (_hs_q == NULL) {                                                   \
++            break;                                                               \
++          }                                                                      \
++        }                                                                        \
++        _hs_qsize = _hs_insize;                                                  \
++        while ((_hs_psize != 0U) || ((_hs_qsize != 0U) && (_hs_q != NULL))) {    \
++          if (_hs_psize == 0U) {                                                 \
++            _hs_e = _hs_q;                                                       \
++            _hs_q = ((_hs_q->next != NULL) ?                                     \
++              HH_FROM_ELMT((head)->hh.tbl, _hs_q->next) : NULL);                 \
++            _hs_qsize--;                                                         \
++          } else if ((_hs_qsize == 0U) || (_hs_q == NULL)) {                     \
++            _hs_e = _hs_p;                                                       \
++            if (_hs_p != NULL) {                                                 \
++              _hs_p = ((_hs_p->next != NULL) ?                                   \
++                HH_FROM_ELMT((head)->hh.tbl, _hs_p->next) : NULL);               \
++            }                                                                    \
++            _hs_psize--;                                                         \
++          } else if ((cmpfcn(                                                    \
++                DECLTYPE(head)(ELMT_FROM_HH((head)->hh.tbl, _hs_p)),             \
++                DECLTYPE(head)(ELMT_FROM_HH((head)->hh.tbl, _hs_q))              \
++                )) <= 0) {                                                       \
++            _hs_e = _hs_p;                                                       \
++            if (_hs_p != NULL) {                                                 \
++              _hs_p = ((_hs_p->next != NULL) ?                                   \
++                HH_FROM_ELMT((head)->hh.tbl, _hs_p->next) : NULL);               \
++            }                                                                    \
++            _hs_psize--;                                                         \
++          } else {                                                               \
++            _hs_e = _hs_q;                                                       \
++            _hs_q = ((_hs_q->next != NULL) ?                                     \
++              HH_FROM_ELMT((head)->hh.tbl, _hs_q->next) : NULL);                 \
++            _hs_qsize--;                                                         \
++          }                                                                      \
++          if ( _hs_tail != NULL ) {                                              \
++            _hs_tail->next = ((_hs_e != NULL) ?                                  \
++              ELMT_FROM_HH((head)->hh.tbl, _hs_e) : NULL);                       \
++          } else {                                                               \
++            _hs_list = _hs_e;                                                    \
++          }                                                                      \
++          if (_hs_e != NULL) {                                                   \
++            _hs_e->prev = ((_hs_tail != NULL) ?                                  \
++              ELMT_FROM_HH((head)->hh.tbl, _hs_tail) : NULL);                    \
++          }                                                                      \
++          _hs_tail = _hs_e;                                                      \
++        }                                                                        \
++        _hs_p = _hs_q;                                                           \
++      }                                                                          \
++      if (_hs_tail != NULL) {                                                    \
++        _hs_tail->next = NULL;                                                   \
++      }                                                                          \
++      if (_hs_nmerges <= 1U) {                                                   \
++        _hs_looping = 0;                                                         \
++        (head)->hh.tbl->tail = _hs_tail;                                         \
++        DECLTYPE_ASSIGN(head, ELMT_FROM_HH((head)->hh.tbl, _hs_list));           \
++      }                                                                          \
++      _hs_insize *= 2U;                                                          \
++    }                                                                            \
++    HASH_FSCK(hh, head, "HASH_SRT");                                             \
++  }                                                                              \
++} while (0)
++
++/* This function selects items from one hash into another hash.
++ * The end result is that the selected items have dual presence
++ * in both hashes. There is no copy of the items made; rather
++ * they are added into the new hash through a secondary hash
++ * hash handle that must be present in the structure. */
++#define HASH_SELECT(hh_dst, dst, hh_src, src, cond)                              \
++do {                                                                             \
++  unsigned _src_bkt, _dst_bkt;                                                   \
++  void *_last_elt = NULL, *_elt;                                                 \
++  UT_hash_handle *_src_hh, *_dst_hh, *_last_elt_hh=NULL;                         \
++  ptrdiff_t _dst_hho = ((char*)(&(dst)->hh_dst) - (char*)(dst));                 \
++  if ((src) != NULL) {                                                           \
++    for (_src_bkt=0; _src_bkt < (src)->hh_src.tbl->num_buckets; _src_bkt++) {    \
++      for (_src_hh = (src)->hh_src.tbl->buckets[_src_bkt].hh_head;               \
++        _src_hh != NULL;                                                         \
++        _src_hh = _src_hh->hh_next) {                                            \
++        _elt = ELMT_FROM_HH((src)->hh_src.tbl, _src_hh);                         \
++        if (cond(_elt)) {                                                        \
++          IF_HASH_NONFATAL_OOM( int _hs_oomed = 0; )                             \
++          _dst_hh = (UT_hash_handle*)(void*)(((char*)_elt) + _dst_hho);          \
++          _dst_hh->key = _src_hh->key;                                           \
++          _dst_hh->keylen = _src_hh->keylen;                                     \
++          _dst_hh->hashv = _src_hh->hashv;                                       \
++          _dst_hh->prev = _last_elt;                                             \
++          _dst_hh->next = NULL;                                                  \
++          if (_last_elt_hh != NULL) {                                            \
++            _last_elt_hh->next = _elt;                                           \
++          }                                                                      \
++          if ((dst) == NULL) {                                                   \
++            DECLTYPE_ASSIGN(dst, _elt);                                          \
++            HASH_MAKE_TABLE(hh_dst, dst, _hs_oomed);                             \
++            IF_HASH_NONFATAL_OOM(                                                \
++              if (_hs_oomed) {                                                   \
++                uthash_nonfatal_oom(_elt);                                       \
++                (dst) = NULL;                                                    \
++                continue;                                                        \
++              }                                                                  \
++            )                                                                    \
++          } else {                                                               \
++            _dst_hh->tbl = (dst)->hh_dst.tbl;                                    \
++          }                                                                      \
++          HASH_TO_BKT(_dst_hh->hashv, _dst_hh->tbl->num_buckets, _dst_bkt);      \
++          HASH_ADD_TO_BKT(_dst_hh->tbl->buckets[_dst_bkt], hh_dst, _dst_hh, _hs_oomed); \
++          (dst)->hh_dst.tbl->num_items++;                                        \
++          IF_HASH_NONFATAL_OOM(                                                  \
++            if (_hs_oomed) {                                                     \
++              HASH_ROLLBACK_BKT(hh_dst, dst, _dst_hh);                           \
++              HASH_DELETE_HH(hh_dst, dst, _dst_hh);                              \
++              _dst_hh->tbl = NULL;                                               \
++              uthash_nonfatal_oom(_elt);                                         \
++              continue;                                                          \
++            }                                                                    \
++          )                                                                      \
++          HASH_BLOOM_ADD(_dst_hh->tbl, _dst_hh->hashv);                          \
++          _last_elt = _elt;                                                      \
++          _last_elt_hh = _dst_hh;                                                \
++        }                                                                        \
++      }                                                                          \
++    }                                                                            \
++  }                                                                              \
++  HASH_FSCK(hh_dst, dst, "HASH_SELECT");                                         \
++} while (0)
++
++#define HASH_CLEAR(hh,head)                                                      \
++do {                                                                             \
++  if ((head) != NULL) {                                                          \
++    HASH_BLOOM_FREE((head)->hh.tbl);                                             \
++    uthash_free((head)->hh.tbl->buckets,                                         \
++                (head)->hh.tbl->num_buckets*sizeof(struct UT_hash_bucket));      \
++    uthash_free((head)->hh.tbl, sizeof(UT_hash_table));                          \
++    (head) = NULL;                                                               \
++  }                                                                              \
++} while (0)
++
++#define HASH_OVERHEAD(hh,head)                                                   \
++ (((head) != NULL) ? (                                                           \
++ (size_t)(((head)->hh.tbl->num_items   * sizeof(UT_hash_handle))   +             \
++          ((head)->hh.tbl->num_buckets * sizeof(UT_hash_bucket))   +             \
++           sizeof(UT_hash_table)                                   +             \
++           (HASH_BLOOM_BYTELEN))) : 0U)
++
++#ifdef NO_DECLTYPE
++#define HASH_ITER(hh,head,el,tmp)                                                \
++for(((el)=(head)), ((*(char**)(&(tmp)))=(char*)((head!=NULL)?(head)->hh.next:NULL)); \
++  (el) != NULL; ((el)=(tmp)), ((*(char**)(&(tmp)))=(char*)((tmp!=NULL)?(tmp)->hh.next:NULL)))
++#else
++#define HASH_ITER(hh,head,el,tmp)                                                \
++for(((el)=(head)), ((tmp)=DECLTYPE(el)((head!=NULL)?(head)->hh.next:NULL));      \
++  (el) != NULL; ((el)=(tmp)), ((tmp)=DECLTYPE(el)((tmp!=NULL)?(tmp)->hh.next:NULL)))
++#endif
++
++/* obtain a count of items in the hash */
++#define HASH_COUNT(head) HASH_CNT(hh,head)
++#define HASH_CNT(hh,head) ((head != NULL)?((head)->hh.tbl->num_items):0U)
++
++typedef struct UT_hash_bucket {
++   struct UT_hash_handle *hh_head;
++   unsigned count;
++
++   /* expand_mult is normally set to 0. In this situation, the max chain length
++    * threshold is enforced at its default value, HASH_BKT_CAPACITY_THRESH. (If
++    * the bucket's chain exceeds this length, bucket expansion is triggered).
++    * However, setting expand_mult to a non-zero value delays bucket expansion
++    * (that would be triggered by additions to this particular bucket)
++    * until its chain length reaches a *multiple* of HASH_BKT_CAPACITY_THRESH.
++    * (The multiplier is simply expand_mult+1). The whole idea of this
++    * multiplier is to reduce bucket expansions, since they are expensive, in
++    * situations where we know that a particular bucket tends to be overused.
++    * It is better to let its chain length grow to a longer yet-still-bounded
++    * value, than to do an O(n) bucket expansion too often.
++    */
++   unsigned expand_mult;
++
++} UT_hash_bucket;
++
++/* random signature used only to find hash tables in external analysis */
++#define HASH_SIGNATURE 0xa0111fe1u
++#define HASH_BLOOM_SIGNATURE 0xb12220f2u
++
++typedef struct UT_hash_table {
++   UT_hash_bucket *buckets;
++   unsigned num_buckets, log2_num_buckets;
++   unsigned num_items;
++   struct UT_hash_handle *tail; /* tail hh in app order, for fast append    */
++   ptrdiff_t hho; /* hash handle offset (byte pos of hash handle in element */
++
++   /* in an ideal situation (all buckets used equally), no bucket would have
++    * more than ceil(#items/#buckets) items. that's the ideal chain length. */
++   unsigned ideal_chain_maxlen;
++
++   /* nonideal_items is the number of items in the hash whose chain position
++    * exceeds the ideal chain maxlen. these items pay the penalty for an uneven
++    * hash distribution; reaching them in a chain traversal takes >ideal steps */
++   unsigned nonideal_items;
++
++   /* ineffective expands occur when a bucket doubling was performed, but
++    * afterward, more than half the items in the hash had nonideal chain
++    * positions. If this happens on two consecutive expansions we inhibit any
++    * further expansion, as it's not helping; this happens when the hash
++    * function isn't a good fit for the key domain. When expansion is inhibited
++    * the hash will still work, albeit no longer in constant time. */
++   unsigned ineff_expands, noexpand;
++
++   uint32_t signature; /* used only to find hash tables in external analysis */
++#ifdef HASH_BLOOM
++   uint32_t bloom_sig; /* used only to test bloom exists in external analysis */
++   uint8_t *bloom_bv;
++   uint8_t bloom_nbits;
++#endif
++
++} UT_hash_table;
++
++typedef struct UT_hash_handle {
++   struct UT_hash_table *tbl;
++   void *prev;                       /* prev element in app order      */
++   void *next;                       /* next element in app order      */
++   struct UT_hash_handle *hh_prev;   /* previous hh in bucket order    */
++   struct UT_hash_handle *hh_next;   /* next hh in bucket order        */
++   const void *key;                  /* ptr to enclosing struct's key  */
++   unsigned keylen;                  /* enclosing struct's key len     */
++   unsigned hashv;                   /* result of hash-fcn(key)        */
++} UT_hash_handle;
++
++#endif /* UTHASH_H */

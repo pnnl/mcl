@@ -6,12 +6,15 @@
 [submodule "deps/uthash"]
 	path = deps/uthash
 	url = git@github.com:troydhanson/uthash.git
+	url = https://github.com/troydhanson/uthash.git
 	ignore=untracked
 [submodule "deps/libatomic_ops"]
 	path = deps/libatomic_ops
 	url = git@github.com:ivmai/libatomic_ops.git
+	url = https://github.com/ivmai/libatomic_ops.git
 	ignore=untracked
 [submodule "rust/libmcl-sys/mcl"]
 	path = rust/libmcl-sys/mcl
 	url = git@github.com:pnnl/mcl.git
-	branch = rustdev
+	url = https://github.com/pnnl/mcl.git
+	branch = ppopp23

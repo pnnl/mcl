@@ -23,12 +23,12 @@ static inline int msg_assemble(struct mcl_msg_struct* msg, uint64_t* data)
 	data[0] = data[0] | ((msg->rid   << MSG_RID_SHIFT)   & MSG_RID_MASK);
 	data[1] =            (msg->pes   << MSG_PES_SHIFT)   & MSG_PES_MASK;
 	data[1] = data[1] | ((msg->mem   << MSG_MEM_SHIFT)   & MSG_MEM_MASK);
-    data[1] = data[1] | ((msg->nres  << MSG_NRES_SHIFT)   & MSG_NRES_MASK);
+	data[1] = data[1] | ((msg->nres  << MSG_NRES_SHIFT)   & MSG_NRES_MASK);
 	data[2] =           ((msg->taskid  << MSG_TASKID_SHIFT)   & MSG_TASKID_MASK);
 
 	Dprintf("Number of dependencies inside message send: %"PRIu32"", msg->ndependencies);
 	((uint32_t*)data)[6] = msg->ndependencies;
-	if(msg->dependencies){
+	if(msg->ndependencies){
 		memcpy(&((uint32_t*)data)[7], msg->dependencies, sizeof(uint32_t) * MCL_MAX_DEPENDENCIES);
 	}
 
