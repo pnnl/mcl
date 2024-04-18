@@ -32,10 +32,10 @@
 #define MCL_MAX_DEPENDENCIES 63
 
 #define MCL_SHM_NAME "mcl_shm"
-#define MCL_SHM_SIZE 1UL << 22
+#define MCL_SHM_SIZE 1UL << 30
 #define MCL_SOCK_NAME "/tmp/mcl_sched_sock"
 #define MCL_SOCK_CNAME "/tmp/mcl_client.%ld"
-#define MCL_SND_BUF (1 << 22UL)
+#define MCL_SND_BUF (1UL << 30)
 #define MCL_RCV_BUF MCL_SND_BUF
 #define MCL_MSG_SIZE (9 * sizeof(uint64_t)) + ((MCL_MAX_DEPENDENCIES + 1) * sizeof(uint32_t))
 #define MCL_RES_ARGS_MAX 16

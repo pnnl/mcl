@@ -237,7 +237,7 @@ int mcl_init(uint64_t workers, uint64_t flags)
 #endif
     pthread_barrier_init(&mcl_desc.wt_barrier, NULL, mcl_desc.workers + 2);
 
-    Dprintf("Initializing Minos Computing Library (wt=%" PRIu64 " flags=0x%" PRIx64 " max_msg=%lu (buffer size=%d msg size=%lu))",
+    Dprintf("Initializing Minos Computing Library (wt=%" PRIu64 " flags=0x%" PRIx64 " max_msg=%lu (buffer size=%lu msg size=%lu))",
             mcl_desc.workers, mcl_desc.flags, MCL_MSG_MAX, MCL_SND_BUF, MCL_MSG_SIZE);
 
     if (cli_setup())

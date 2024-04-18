@@ -20,15 +20,15 @@ struct timespec start, end;
 const struct option global_lopts[] = {
 #ifdef __TEST_MCL
         {"workers",     0, NULL, 'w'},
-	{"sync",        0, NULL, 'x'},
+		{"sync",        0, NULL, 'x'},
 #endif
 #ifdef __TEST_OCL
         {"device",      0, NULL, 'd'},
 #endif
-	{"rep",         0, NULL, 'r'},
+		{"rep",         0, NULL, 'r'},
         {"size",        0, NULL, 's'},
-	{"type",        0, NULL, 't'},
-	{"verify",      0, NULL, 'v'},
+		{"type",        0, NULL, 't'},
+		{"verify",      0, NULL, 'v'},
         {"help",        0, NULL, 'h'},
         {NULL,          0, NULL, 0}
 };
@@ -38,20 +38,19 @@ void print_global_help(char* prog)
         printf("Usage: %s <options>\n", prog);
 #ifdef __TEST_MCL
         printf("\t -w, --workers   <n> Number of workers (default = %lu)\n", DFT_WORKERS);
-	printf("\t -t, --type      <n> Type of resource  (default = %lu, 0=CPU, 1=GPU, 2=ANY)\n",
+		printf("\t -t, --type      <n> Type of resource  (default = %lu, 0=CPU, 1=GPU, 2=ANY)\n",
 	    	DFT_TYPE);
-	printf("\t -x, --sync      Synchronous test      (default = %lu, 0=ASYNC, 1=SYNC)\n",
+		printf("\t -x, --sync      Synchronous test      (default = %lu, 0=ASYNC, 1=SYNC)\n",
 	    	DFT_SYNC);
 #endif
 #ifdef __TEST_OCL
-	printf("\t -t, --type      <n> Type of resource  (default = %lu, 0=CPU, 1=GPU)\n",
-	    	DFT_TYPE);
-	printf("\t -d, --device    <n> Device ID  (default = %lu)\n", DFT_DID);
+		printf("\t -t, --type      <n> Type of resource  (default = %lu, 0=CPU, 1=GPU)\n", DFT_TYPE);
+		printf("\t -d, --device    <n> Device ID  (default = %lu)\n", DFT_DID);
 #endif	
         printf("\t -s, --size      <n> Size of matrix    (default = %lu)\n", DFT_SIZE);
-	printf("\t -r, --rep       <n> Repetitions       (default = %lu)\n", DFT_REP);
-	printf("\t -v, --verify    Verify execution      (default = %lu)\n", DFT_VERIFY);
-	printf("\t -h, --help      Show help\n");
+		printf("\t -r, --rep       <n> Repetitions       (default = %lu)\n", DFT_REP);
+		printf("\t -v, --verify    Verify execution      (default = %lu)\n", DFT_VERIFY);
+		printf("\t -h, --help      Show help\n");
 
         exit(EXIT_FAILURE);
 }
@@ -117,7 +116,6 @@ void parse_global_opts(int argc, char** argv)
                         break;
 		case 'v':
 			verify = 1UL;
-			synct  = 1UL;
                         break;
                 case -1:
                         break;
@@ -128,6 +126,11 @@ void parse_global_opts(int argc, char** argv)
                 }
         }while(opt != -1);
 
+		if(verify){
+				synct  = 1UL;
+				rep    = 1UL;
+		}
+		
         printf("Parsed options: \n");
 #ifdef __TEST_MCL
         printf("\t Number of workers     = %"PRIu64"\n", workers);
@@ -269,7 +272,7 @@ int ocl_setup(cl_device_id** dev, cl_context* ctxt, cl_command_queue* q, unsigne
 	*q = clCreateCommandQueueWithProperties(*ctxt, *(*dev + id), props, &ret);
 #else
 #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
-    *q = clCreateCommandQueue(*ctxt, *(*dev + id), NULL, &ret);
+    *q = clCreateCommandQueue(*ctxt, *(*dev + id), 0, &ret);
 #pragma GCC diagnostic pop
 #endif
     if(ret != CL_SUCCESS){

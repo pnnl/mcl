@@ -9,7 +9,7 @@
 #include "utils.h"
 #include <minos.h>
 
-// #define VERBOSE
+//#define VERBOSE
 #ifdef DOUBLE_PRECISION
 #define FTYPE double
 #else
