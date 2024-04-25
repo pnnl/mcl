@@ -358,12 +358,14 @@ int resource_map(mcl_platform_t *plt, uint64_t nplt, mcl_class_t *class, mcl_res
     mcl_platform_t *p = plt;
     uint64_t nres = 0;
 
-    Dprintf("Mapping resources....");
+    Dprintf("Mapping resources...");
 
     for (i = 0; i < nplt; i++, p++)
     {
+        Dprintf("\t Platform %lu", i);
         for (j = 0; j < p->ndev; j++, nres++)
         {
+            Dprintf("\t\t Device %lu", j);
             res[nres].plt = p;
             res[nres].dev = &(p->devs[j]);
             res[nres].pes_used = 0;

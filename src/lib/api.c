@@ -677,22 +677,18 @@ static int mcl_exec_common(mcl_handle *h, uint64_t *pes, uint64_t *lsize, uint64
             continue;
 
         /* For FPGAs we don't really have a way to test PEs and memory */
-        if (flags == MCL_TASK_FPGA && dev->type == MCL_TASK_FPGA)
-        {
-
+        if (flags == MCL_TASK_FPGA && dev->type == MCL_TASK_FPGA){
             found = i;
-            continue;
+            break;
         }
 
         /* Check memory... */
-        if (t->mem > dev->mem_size)
-        {
+        if (t->mem > dev->mem_size){
             continue;
         }
 
         /* Check required dimensions... */
-        for (int j = 0; j < MCL_DEV_DIMS && !stop; j++)
-        {
+        for (int j = 0; j < MCL_DEV_DIMS && !stop; j++){
             if (dev->wisize[j] == 1 && t->pes[j] > 1)
                 stop = 1;
         }
@@ -712,8 +708,7 @@ static int mcl_exec_common(mcl_handle *h, uint64_t *pes, uint64_t *lsize, uint64
         found = i;
     }
 
-    if (found < 0)
-    {
+    if (found < 0){
         Dprintf("No device found for Task %" PRIu32 "", h->rid);
         return -MCL_ERR_INVDEV;
     }
@@ -721,8 +716,7 @@ static int mcl_exec_common(mcl_handle *h, uint64_t *pes, uint64_t *lsize, uint64
     Dprintf("Task %" PRIu32 " can be executed on resource %d (%" PRIu64 "/%" PRIu64 " PEs, %" PRIu64 "/%" PRIu64 " bytes)",
             h->rid, found, t->tpes, dev->pes, t->mem, dev->mem_size);
 
-    if (ndependencies > 0 && dep_list == NULL)
-    {
+    if (ndependencies > 0 && dep_list == NULL){
         eprintf("Invalid arguments, no dependency list is null but ndependencies is 0.");
         return -MCL_ERR_INVARG;
     }
