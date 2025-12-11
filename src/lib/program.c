@@ -148,7 +148,13 @@ mcl_program* prgMap_add(char* path, char* opts, uint64_t flags, uint64_t archs)
 		strcpy(p->opts, opts);
 	memset((void*) p->objs, 0, sizeof(mcl_pobj) * ndevs);
 	
+	p->nkernels = 0;
+	p->knames = NULL;
+	p->knames_size = 0;
+
+	pthread_rwlock_wrlock(&prgMap_lock);
 	LL_APPEND(prgMap, p);
+	pthread_rwlock_unlock(&prgMap_lock);
 
 	return p;
 

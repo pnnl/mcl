@@ -143,6 +143,7 @@ int kerMap_remove(mcl_kernel* k)
 	LL_SEARCH(kerMap, e, k, pcmp);
 	if(e){
 		__kerMap_remove(k);
+                pthread_rwlock_unlock(&kerMap_lock);
 		return 0;
 	}
         pthread_rwlock_unlock(&kerMap_lock);

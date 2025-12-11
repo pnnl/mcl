@@ -455,7 +455,7 @@ err:
 }
 
 mcl_handle *__task_init(char *path, char *name, uint64_t nargs, char *opts, unsigned long flags) {
-    mcl_handle *h = __task_create(0);
+    mcl_handle *h = __task_create(flags);
 
     if (!h)
         return NULL;
